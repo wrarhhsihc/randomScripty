@@ -1,0 +1,50 @@
+-- PLACE THIS IN SERVERSCRIPTSERVICE -> SCRIPT
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+-- Automatically create the network bridge if it doesn't exist
+local ResetCDEvent = ReplicatedStorage:FindFirstChild("ResetCDEvent")
+if not ResetCDEvent then
+	ResetCDEvent = Instance.new("RemoteEvent")
+	ResetCDEvent.Name = "ResetCDEvent"
+	ResetCDEvent.Parent = ReplicatedStorage
+end
+
+-- Function that searches the player's tools and resets their cooldown values
+local function resetCooldowns(player)
+	local character = player.Character
+	local backpack = player.Backpack
+
+	local function scanAndReset(container)
+		if not container then return end
+		
+		-- Loop through everything inside the player's character or inventory
+		for _, item in ipairs(container:GetDescendants()) do
+			
+			-- 1. Reset standard NumberValue/IntValue folders (e.g., Value named "Cooldown")
+			if item:IsA("ValueBase") then
+				local name = string.lower(item.Name)
+				if name == "cooldown" or name == "cd" or name == "reload" or name == "wait" or name == "delay" then
+					item.Value = 0
+					print("[CD Tool] Reset Value: '" .. item.Name .. "' to 0 on " .. item.Parent.Name)
+				end
+			end
+
+			-- 2. Reset Attributes (modern Roblox properties on tools)
+			local attributes = item:GetAttributes()
+			for attrName, _ in pairs(attributes) do
+				local name = string.lower(attrName)
+				if name == "cooldown" or name == "cd" or name == "reload" or name == "wait" or name == "delay" then
+					item:SetAttribute(attrName, 0)
+					print("[CD Tool] Reset Attribute: '" .. attrName .. "' to 0 on " .. item.Name)
+				end
+			end
+		end
+	end
+
+	-- Run the clean up on both equipped and unequipped items
+	scanAndReset(character)
+	scanAndReset(backpack)
+end
+
+-- Listen for the player clicking the button
+ResetCDEvent.OnServerEvent:Connect(resetCooldowns)
