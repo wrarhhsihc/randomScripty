@@ -1,50 +1,83 @@
--- PLACE THIS IN SERVERSCRIPTSERVICE -> SCRIPT
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
+-- Copy and paste this into your Executer (JJSploit, Delta, Fluxus, etc.)
 
--- Automatically create the network bridge if it doesn't exist
-local ResetCDEvent = ReplicatedStorage:FindFirstChild("ResetCDEvent")
-if not ResetCDEvent then
-	ResetCDEvent = Instance.new("RemoteEvent")
-	ResetCDEvent.Name = "ResetCDEvent"
-	ResetCDEvent.Parent = ReplicatedStorage
+local CoreGui = game:GetService("CoreGui")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+-- Check if GUI already exists and remove it
+if CoreGui:FindFirstChild("CD_Hold_Bypass") then
+    CoreGui.CD_Hold_Bypass:Destroy()
 end
 
--- Function that searches the player's tools and resets their cooldown values
-local function resetCooldowns(player)
-	local character = player.Character
-	local backpack = player.Backpack
+-- Create the GUI
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "CD_Hold_Bypass"
+ScreenGui.Parent = CoreGui -- This puts it in the hidden CoreGui folder
 
-	local function scanAndReset(container)
-		if not container then return end
-		
-		-- Loop through everything inside the player's character or inventory
-		for _, item in ipairs(container:GetDescendants()) do
-			
-			-- 1. Reset standard NumberValue/IntValue folders (e.g., Value named "Cooldown")
-			if item:IsA("ValueBase") then
-				local name = string.lower(item.Name)
-				if name == "cooldown" or name == "cd" or name == "reload" or name == "wait" or name == "delay" then
-					item.Value = 0
-					print("[CD Tool] Reset Value: '" .. item.Name .. "' to 0 on " .. item.Parent.Name)
-				end
-			end
+local Main = Instance.new("Frame")
+Main.Size = UDim2.new(0, 200, 0, 100)
+Main.Position = UDim2.new(0.5, -100, 0.4, -50)
+Main.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+Main.Active = true
+Main.Draggable = true -- Built-in draggable for executers
+Main.Parent = ScreenGui
 
-			-- 2. Reset Attributes (modern Roblox properties on tools)
-			local attributes = item:GetAttributes()
-			for attrName, _ in pairs(attributes) do
-				local name = string.lower(attrName)
-				if name == "cooldown" or name == "cd" or name == "reload" or name == "wait" or name == "delay" then
-					item:SetAttribute(attrName, 0)
-					print("[CD Tool] Reset Attribute: '" .. attrName .. "' to 0 on " .. item.Name)
-				end
-			end
-		end
-	end
+local UICorner = Instance.new("UICorner", Main)
 
-	-- Run the clean up on both equipped and unequipped items
-	scanAndReset(character)
-	scanAndReset(backpack)
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, 0, 0, 30)
+Title.Text = "Universal Reset"
+Title.TextColor3 = Color3.new(1, 1, 1)
+Title.BackgroundColor3 = Color3.fromRGB(60, 0, 150)
+Title.Parent = Main
+Instance.new("UICorner", Title)
+
+local Button = Instance.new("TextButton")
+Button.Size = UDim2.new(0.9, 0, 0, 50)
+Button.Position = UDim2.new(0.05, 0, 0.4, 0)
+Button.Text = "Set All CDs/Hold 0"
+Button.BackgroundColor3 = Color3.fromRGB(0, 150, 80)
+Button.TextColor3 = Color3.new(1, 1, 1)
+Button.TextScaled = true
+Button.Parent = Main
+Instance.new("UICorner", Button)
+
+-- The Logic
+local keywords = {"cooldown", "cd", "duration", "hold", "time", "delay", "charge", "cast"}
+
+local function resetAll()
+    local count = 0
+    -- Search everywhere related to the player
+    local searchAreas = {LocalPlayer.Character, LocalPlayer.Backpack, LocalPlayer}
+    
+    for _, area in pairs(searchAreas) do
+        if area then
+            -- 1. Reset Value Objects
+            for _, v in pairs(area:GetDescendants()) do
+                if v:IsA("NumberValue") or v:IsA("IntValue") then
+                    for _, key in ipairs(keywords) do
+                        if v.Name:lower():find(key) then
+                            v.Value = 0
+                            count = count + 1
+                        end
+                    end
+                end
+            end
+            -- 2. Reset Attributes
+            for attrName, attrValue in pairs(area:GetAttributes()) do
+                for _, key in ipairs(keywords) do
+                    if attrName:lower():find(key) and typeof(attrValue) == "number" then
+                        area:SetAttribute(attrName, 0)
+                        count = count + 1
+                    end
+                end
+            end
+        end
+    end
+    print("Success: Reset " .. count .. " variables.")
+    Button.Text = "Done! (" .. count .. ")"
+    task.wait(1)
+    Button.Text = "Set All CDs/Hold 0"
 end
 
--- Listen for the player clicking the button
-ResetCDEvent.OnServerEvent:Connect(resetCooldowns)
+Button.MouseButton1Click:Connect(resetAll)
