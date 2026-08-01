@@ -1331,111 +1331,145 @@ clearBtn.MouseEnter:Connect(function() TweenService:Create(clearStroke, tweenFas
 clearBtn.MouseLeave:Connect(function() TweenService:Create(clearStroke, tweenFast, {Color = Color3.fromRGB(100, 40, 40), Transparency = 0.4}):Play() end)
 
 -- ============================================
--- KEYBIND TAB
+-- KEYBIND INPUT HANDLER (FIXED)
 -- ============================================
-local kbTitle = Instance.new("TextLabel")
-kbTitle.Size = UDim2.new(1, 0, 0, 22)
-kbTitle.Position = UDim2.new(0, 0, 0, 4)
-kbTitle.BackgroundTransparency = 1
-kbTitle.Text = "⌨️  Keybind Slots — Press key to teleport"
-kbTitle.TextColor3 = Color3.fromRGB(170, 165, 215)
-kbTitle.TextSize = 11
-kbTitle.Font = Enum.Font.GothamBold
-kbTitle.TextXAlignment = Enum.TextXAlignment.Left
-kbTitle.ZIndex = 4
-kbTitle.Parent = keybindContent
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
 
-local kbSubtitle = Instance.new("TextLabel")
-kbSubtitle.Size = UDim2.new(1, 0, 0, 14)
-kbSubtitle.Position = UDim2.new(0, 0, 0, 24)
-kbSubtitle.BackgroundTransparency = 1
-kbSubtitle.Text = "Click ⚙️ to assign waypoint. Double-click to unassign."
-kbSubtitle.TextColor3 = Color3.fromRGB(85, 80, 120)
-kbSubtitle.TextSize = 8
-kbSubtitle.Font = Enum.Font.Gotham
-kbSubtitle.TextXAlignment = Enum.TextXAlignment.Left
-kbSubtitle.ZIndex = 4
-kbSubtitle.Parent = keybindContent
+    -- Listening mode
+    if listeningForKey then
+        local sid = listeningForKey
+        local kc = input.KeyCode
 
--- Add Keybind button
-local addKbBtn = Instance.new("TextButton")
-addKbBtn.Size = UDim2.new(1, 0, 0, 34)
-addKbBtn.Position = UDim2.new(0, 0, 0, 42)
-addKbBtn.BackgroundColor3 = Color3.fromRGB(30, 50, 35)
-addKbBtn.Text = ""
-addKbBtn.BorderSizePixel = 0
-addKbBtn.AutoButtonColor = false
-addKbBtn.ClipsDescendants = true
-addKbBtn.ZIndex = 4
-addKbBtn.Parent = keybindContent
-Instance.new("UICorner", addKbBtn).CornerRadius = UDim.new(0, 8)
+        -- Cancel listening first so the pulse coroutine stops BEFORE we update display
+        listeningForKey = nil
 
-local addKbStroke = Instance.new("UIStroke")
-addKbStroke.Color = Color3.fromRGB(50, 100, 55)
-addKbStroke.Thickness = 1
-addKbStroke.Transparency = 0.3
-addKbStroke.Parent = addKbBtn
+        if kc == Enum.KeyCode.Escape then
+            -- Just cancel, restore display
+            local s = keybindSlotFrames[sid]
+            if s and s.Parent then
+                local kbtn = s:FindFirstChild("KeyBtn")
+                if kbtn then
+                    local kl = kbtn:FindFirstChild("KeyLabel") or kbtn:FindFirstChildWhichIsA("TextLabel")
+                    if kl then
+                        kl.TextTransparency = 0
+                    end
+                    local ks = kbtn:FindFirstChildWhichIsA("UIStroke")
+                    if ks then TweenService:Create(ks, tweenFast, {Color = Color3.fromRGB(62, 52, 110)}):Play() end
+                    TweenService:Create(kbtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(35, 30, 58)}):Play()
+                end
+                updateKeybindDisplay(sid)
+            end
+            return
+        end
 
-local addKbLabel = Instance.new("TextLabel")
-addKbLabel.Size = UDim2.new(1, 0, 1, 0)
-addKbLabel.BackgroundTransparency = 1
-addKbLabel.Text = "➕  Add Keybind"
-addKbLabel.TextColor3 = Color3.fromRGB(130, 220, 140)
-addKbLabel.TextSize = 12
-addKbLabel.Font = Enum.Font.GothamBold
-addKbLabel.ZIndex = 5
-addKbLabel.Parent = addKbBtn
+        -- Check duplicates
+        local isDuplicate = false
+        for id, kb in pairs(keybinds) do
+            if id ~= sid and kb and kb.key == kc then
+                isDuplicate = true
+                break
+            end
+        end
 
-local kbDivider = Instance.new("Frame")
-kbDivider.Size = UDim2.new(1, 0, 0, 1)
-kbDivider.Position = UDim2.new(0, 0, 0, 82)
-kbDivider.BackgroundColor3 = Color3.fromRGB(50, 42, 90)
-kbDivider.BackgroundTransparency = 0.4
-kbDivider.BorderSizePixel = 0
-kbDivider.ZIndex = 4
-kbDivider.Parent = keybindContent
+        if isDuplicate then
+            local s = keybindSlotFrames[sid]
+            if s and s.Parent then
+                -- Reset the key button visual since we cancelled listening
+                local kbtn = s:FindFirstChild("KeyBtn")
+                if kbtn then
+                    local kl = kbtn:FindFirstChild("KeyLabel") or kbtn:FindFirstChildWhichIsA("TextLabel")
+                    if kl then
+                        kl.TextTransparency = 0
+                    end
+                    local ks = kbtn:FindFirstChildWhichIsA("UIStroke")
+                    if ks then TweenService:Create(ks, tweenFast, {Color = Color3.fromRGB(62, 52, 110)}):Play() end
+                    TweenService:Create(kbtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(35, 30, 58)}):Play()
+                end
+                updateKeybindDisplay(sid)
 
-local kbScroll = Instance.new("ScrollingFrame")
-kbScroll.Size = UDim2.new(1, 0, 1, -90)
-kbScroll.Position = UDim2.new(0, 0, 0, 88)
-kbScroll.BackgroundColor3 = Color3.fromRGB(14, 12, 26)
-kbScroll.BorderSizePixel = 0
-kbScroll.ScrollBarThickness = 3
-kbScroll.ScrollBarImageColor3 = Color3.fromRGB(90, 60, 170)
-kbScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-kbScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-kbScroll.ZIndex = 4
-kbScroll.Parent = keybindContent
-Instance.new("UICorner", kbScroll).CornerRadius = UDim.new(0, 8)
+                -- Flash red for error
+                TweenService:Create(s, tweenFast, {BackgroundColor3 = Color3.fromRGB(55, 20, 20)}):Play()
+                task.delay(0.3, function()
+                    if s and s.Parent then
+                        TweenService:Create(s, tweenFast, {BackgroundColor3 = Color3.fromRGB(20, 18, 38)}):Play()
+                    end
+                end)
+            end
+            return
+        end
 
-local kbScrollStroke = Instance.new("UIStroke")
-kbScrollStroke.Color = Color3.fromRGB(42, 36, 72)
-kbScrollStroke.Thickness = 1
-kbScrollStroke.Transparency = 0.4
-kbScrollStroke.Parent = kbScroll
+        -- Valid key - assign it
+        if keybinds[sid] then
+            keybinds[sid].key = kc
+        end
 
-local kbLayout = Instance.new("UIListLayout")
-kbLayout.SortOrder = Enum.SortOrder.LayoutOrder
-kbLayout.Padding = UDim.new(0, 5)
-kbLayout.Parent = kbScroll
+        -- Force update the display immediately with correct values
+        local s = keybindSlotFrames[sid]
+        if s and s.Parent then
+            local kbtn = s:FindFirstChild("KeyBtn")
+            if kbtn then
+                -- Directly set the key label text and color (don't rely on updateKeybindDisplay alone)
+                local kl = kbtn:FindFirstChild("KeyLabel") or kbtn:FindFirstChildWhichIsA("TextLabel")
+                if kl then
+                    kl.Text = kc.Name
+                    kl.TextTransparency = 0
+                    kl.TextColor3 = Color3.fromRGB(195, 175, 250)
+                end
 
-local kbPad = Instance.new("UIPadding")
-kbPad.PaddingTop = UDim.new(0, 5)
-kbPad.PaddingBottom = UDim.new(0, 5)
-kbPad.PaddingLeft = UDim.new(0, 5)
-kbPad.PaddingRight = UDim.new(0, 5)
-kbPad.Parent = kbScroll
+                -- Reset button styling
+                local ks = kbtn:FindFirstChildWhichIsA("UIStroke")
+                if ks then TweenService:Create(ks, tweenFast, {Color = Color3.fromRGB(62, 52, 110)}):Play() end
 
-local noKbLabel = Instance.new("TextLabel")
-noKbLabel.Name = "NoKb"
-noKbLabel.Size = UDim2.new(1, 0, 0, 45)
-noKbLabel.BackgroundTransparency = 1
-noKbLabel.Text = "No keybinds created yet.\nClick '➕ Add Keybind' above!"
-noKbLabel.TextColor3 = Color3.fromRGB(60, 55, 85)
-noKbLabel.TextSize = 11
-noKbLabel.Font = Enum.Font.Gotham
-noKbLabel.ZIndex = 5
-noKbLabel.Parent = kbScroll
+                -- Green flash for success
+                TweenService:Create(kbtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(28, 62, 28)}):Play()
+                task.delay(0.25, function()
+                    if kbtn and kbtn.Parent then
+                        TweenService:Create(kbtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(35, 30, 58)}):Play()
+                    end
+                end)
+            end
+
+            -- Also run the full display update for the dot etc
+            updateKeybindDisplay(sid)
+
+            -- Slot flash
+            TweenService:Create(s, tweenFast, {BackgroundColor3 = Color3.fromRGB(25, 40, 25)}):Play()
+            task.delay(0.25, function()
+                if s and s.Parent then
+                    TweenService:Create(s, tweenFast, {BackgroundColor3 = Color3.fromRGB(20, 18, 38)}):Play()
+                end
+            end)
+        end
+        return
+    end
+
+    -- Execute keybinds (not listening mode)
+    for sid, kb in pairs(keybinds) do
+        if kb and kb.key == input.KeyCode and kb.waypointIndex then
+            local pos2 = getWpPos(kb.waypointIndex)
+            if pos2 then
+                character = player.Character
+                if character and character:FindFirstChild("HumanoidRootPart") then
+                    character.HumanoidRootPart.CFrame = CFrame.new(pos2)
+                    local s = keybindSlotFrames[sid]
+                    if s and s.Parent then
+                        TweenService:Create(s, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(35, 110, 35)}):Play()
+                        local ss = s:FindFirstChildWhichIsA("UIStroke")
+                        if ss then TweenService:Create(ss, TweenInfo.new(0.1), {Color = Color3.fromRGB(70, 195, 70)}):Play() end
+                        task.delay(0.35, function()
+                            if s and s.Parent then
+                                TweenService:Create(s, tweenFast, {BackgroundColor3 = Color3.fromRGB(20, 18, 38)}):Play()
+                                if ss then TweenService:Create(ss, tweenFast, {Color = Color3.fromRGB(44, 38, 72)}):Play() end
+                            end
+                        end)
+                    end
+                end
+            end
+        end
+    end
+end)
 
 -- ============================================
 -- KEYBIND SLOT HELPERS
@@ -1813,11 +1847,15 @@ local function createKeybindSlot(slotId)
         end
     end)
 
-    -- Key button
+        -- Key button
     keyBtn.MouseButton1Click:Connect(function()
         createRipple(keyBtn)
         if listeningForKey == slotId then
+            -- Cancel listening
             listeningForKey = nil
+            -- Wait a frame for the pulse coroutine to notice and stop
+            task.wait()
+            keyLabel.TextTransparency = 0
             updateKeybindDisplay(slotId)
             TweenService:Create(kbStroke, tweenFast, {Color = Color3.fromRGB(62, 52, 110)}):Play()
             TweenService:Create(keyBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(35, 30, 58)}):Play()
@@ -1825,22 +1863,27 @@ local function createKeybindSlot(slotId)
         end
         listeningForKey = slotId
         keyLabel.Text = "..."
+        keyLabel.TextTransparency = 0
         keyLabel.TextColor3 = Color3.fromRGB(250, 195, 90)
         TweenService:Create(kbStroke, tweenFast, {Color = Color3.fromRGB(195, 155, 55)}):Play()
         TweenService:Create(keyBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(55, 45, 25)}):Play()
         task.spawn(function()
-            while listeningForKey == slotId do
+            local myListenId = slotId
+            while listeningForKey == myListenId do
                 if not keyLabel or not keyLabel.Parent then break end
-                TweenService:Create(keyLabel, TweenInfo.new(0.4), {TextTransparency = 0.4}):Play()
-                task.wait(0.4)
-                if listeningForKey ~= slotId then break end
-                TweenService:Create(keyLabel, TweenInfo.new(0.4), {TextTransparency = 0}):Play()
-                task.wait(0.4)
+                TweenService:Create(keyLabel, TweenInfo.new(0.35), {TextTransparency = 0.5}):Play()
+                task.wait(0.35)
+                if listeningForKey ~= myListenId then break end
+                if not keyLabel or not keyLabel.Parent then break end
+                TweenService:Create(keyLabel, TweenInfo.new(0.35), {TextTransparency = 0}):Play()
+                task.wait(0.35)
             end
-            if keyLabel and keyLabel.Parent then keyLabel.TextTransparency = 0 end
+            -- Ensure text is fully visible when we exit the loop
+            if keyLabel and keyLabel.Parent then
+                keyLabel.TextTransparency = 0
+            end
         end)
     end)
-
     -- Delete keybind
     delKbBtn.MouseButton1Click:Connect(function()
         createRipple(delKbBtn)
