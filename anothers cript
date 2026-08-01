@@ -3,6 +3,7 @@
     Features: Draggable, Resizable, Minimizable, Renamable Waypoints
     Keybind Tab: Dynamic keybind creation, assign keys to waypoints
     Cosmic background effects with stars and nebula
+    Fixed: Keybind number input bug resolved
 ]]
 
 local player = game.Players.LocalPlayer
@@ -27,9 +28,6 @@ local MIN_HEIGHT = 340
 local MAX_WIDTH = 560
 local MAX_HEIGHT = 580
 
--- ============================================
--- CLEAN UP
--- ============================================
 if player.PlayerGui:FindFirstChild("ProximityBypassGUI") then
     player.PlayerGui:FindFirstChild("ProximityBypassGUI"):Destroy()
 end
@@ -40,9 +38,6 @@ screenGui.ResetOnSpawn = false
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screenGui.Parent = player.PlayerGui
 
--- ============================================
--- OUTER GLOW
--- ============================================
 local outerGlow = Instance.new("Frame")
 outerGlow.Name = "OuterGlow"
 outerGlow.Size = UDim2.new(0, 350, 0, 420)
@@ -50,28 +45,27 @@ outerGlow.Position = UDim2.new(0.5, -175, 0.5, -210)
 outerGlow.BackgroundTransparency = 1
 outerGlow.Parent = screenGui
 
-local function makeGlowLayer(size, pos, color, transp, zindex)
+local function makeGlowLayer(sz, color, transp, zi)
     local g = Instance.new("ImageLabel")
-    g.Size = UDim2.new(1, size, 1, size)
-    g.Position = UDim2.new(0, -size/2, 0, -size/2)
+    g.Size = UDim2.new(1, sz, 1, sz)
+    g.Position = UDim2.new(0, -sz/2, 0, -sz/2)
     g.BackgroundTransparency = 1
     g.Image = "rbxassetid://5554236805"
     g.ImageColor3 = color
     g.ImageTransparency = transp
     g.ScaleType = Enum.ScaleType.Slice
     g.SliceCenter = Rect.new(23, 23, 277, 277)
-    g.ZIndex = zindex
+    g.ZIndex = zi
     g.Parent = outerGlow
     return g
 end
 
-local glowLayer1 = makeGlowLayer(50, nil, Color3.fromRGB(100, 60, 200), 0.7, -3)
-local glowLayer2 = makeGlowLayer(30, nil, Color3.fromRGB(120, 70, 230), 0.55, -2)
-local glowLayer3 = makeGlowLayer(70, nil, Color3.fromRGB(80, 40, 180), 0.85, -4)
-local shadow = makeGlowLayer(60, nil, Color3.fromRGB(0, 0, 0), 0.4, -5)
+local glowLayer1 = makeGlowLayer(50, Color3.fromRGB(100, 60, 200), 0.7, -3)
+local glowLayer2 = makeGlowLayer(30, Color3.fromRGB(120, 70, 230), 0.55, -2)
+local glowLayer3 = makeGlowLayer(70, Color3.fromRGB(80, 40, 180), 0.85, -4)
+local shadow = makeGlowLayer(60, Color3.fromRGB(0, 0, 0), 0.4, -5)
 shadow.Position = UDim2.new(0, -30, 0, -20)
 
--- Main Frame
 local mainFrame = Instance.new("Frame")
 mainFrame.Name = "MainFrame"
 mainFrame.Size = UDim2.new(1, 0, 1, 0)
@@ -79,7 +73,6 @@ mainFrame.BackgroundColor3 = Color3.fromRGB(12, 10, 22)
 mainFrame.BorderSizePixel = 0
 mainFrame.ClipsDescendants = true
 mainFrame.Parent = outerGlow
-
 Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 14)
 
 local mainStroke = Instance.new("UIStroke")
@@ -102,7 +95,7 @@ innerStroke.Transparency = 0.5
 innerStroke.Parent = innerFrame
 
 -- ============================================
--- COSMIC BACKGROUND SYSTEM
+-- COSMIC BACKGROUND
 -- ============================================
 local cosmicContainer = Instance.new("Frame")
 cosmicContainer.Name = "CosmicBG"
@@ -113,18 +106,17 @@ cosmicContainer.ZIndex = 0
 cosmicContainer.Parent = mainFrame
 Instance.new("UICorner", cosmicContainer).CornerRadius = UDim.new(0, 14)
 
--- Nebula layers (large soft colored blobs)
-local function createNebula(color, size, posX, posY, transp)
-    local nebula = Instance.new("Frame")
-    nebula.Size = UDim2.new(0, size, 0, size)
-    nebula.Position = UDim2.new(posX, -size/2, posY, -size/2)
-    nebula.BackgroundColor3 = color
-    nebula.BackgroundTransparency = transp
-    nebula.BorderSizePixel = 0
-    nebula.ZIndex = 0
-    nebula.Parent = cosmicContainer
-    Instance.new("UICorner", nebula).CornerRadius = UDim.new(1, 0)
-    return nebula
+local function createNebula(color, size, px, py, transp)
+    local n = Instance.new("Frame")
+    n.Size = UDim2.new(0, size, 0, size)
+    n.Position = UDim2.new(px, -size/2, py, -size/2)
+    n.BackgroundColor3 = color
+    n.BackgroundTransparency = transp
+    n.BorderSizePixel = 0
+    n.ZIndex = 0
+    n.Parent = cosmicContainer
+    Instance.new("UICorner", n).CornerRadius = UDim.new(1, 0)
+    return n
 end
 
 local nebula1 = createNebula(Color3.fromRGB(60, 20, 120), 180, 0.15, 0.3, 0.88)
@@ -133,95 +125,69 @@ local nebula3 = createNebula(Color3.fromRGB(100, 30, 80), 120, 0.5, 0.8, 0.92)
 local nebula4 = createNebula(Color3.fromRGB(30, 60, 140), 200, 0.85, 0.15, 0.91)
 local nebula5 = createNebula(Color3.fromRGB(80, 20, 100), 100, 0.3, 0.1, 0.93)
 
--- Stars
-local stars = {}
+local starsList = {}
 local function createStar()
-    local star = Instance.new("Frame")
-    local s = math.random(1, 3)
-    star.Size = UDim2.new(0, s, 0, s)
-    star.Position = UDim2.new(math.random() * 0.95 + 0.025, 0, math.random() * 0.95 + 0.025, 0)
-    star.BackgroundColor3 = Color3.fromRGB(
-        200 + math.random(55),
-        200 + math.random(55),
-        220 + math.random(35)
-    )
-    star.BackgroundTransparency = math.random() * 0.5 + 0.3
-    star.BorderSizePixel = 0
-    star.ZIndex = 0
-    star.Parent = cosmicContainer
-    Instance.new("UICorner", star).CornerRadius = UDim.new(1, 0)
-    table.insert(stars, {
-        frame = star,
-        baseTransp = star.BackgroundTransparency,
-        twinkleSpeed = 1 + math.random() * 3,
-        twinkleOffset = math.random() * math.pi * 2
+    local s = Instance.new("Frame")
+    local sz = math.random(1, 3)
+    s.Size = UDim2.new(0, sz, 0, sz)
+    s.Position = UDim2.new(math.random() * 0.95 + 0.025, 0, math.random() * 0.95 + 0.025, 0)
+    s.BackgroundColor3 = Color3.fromRGB(200 + math.random(55), 200 + math.random(55), 220 + math.random(35))
+    s.BackgroundTransparency = math.random() * 0.5 + 0.3
+    s.BorderSizePixel = 0
+    s.ZIndex = 0
+    s.Parent = cosmicContainer
+    Instance.new("UICorner", s).CornerRadius = UDim.new(1, 0)
+    table.insert(starsList, {
+        frame = s,
+        baseTransp = s.BackgroundTransparency,
+        speed = 1 + math.random() * 3,
+        offset = math.random() * math.pi * 2
     })
-    return star
 end
 
--- Create initial stars
-for _ = 1, 40 do
-    createStar()
-end
+for _ = 1, 40 do createStar() end
 
--- Shooting stars
 local function createShootingStar()
-    local shootStar = Instance.new("Frame")
-    local startX = math.random() * 0.6 + 0.2
-    local startY = math.random() * 0.3
-    shootStar.Size = UDim2.new(0, 0, 0, 1)
-    shootStar.Position = UDim2.new(startX, 0, startY, 0)
-    shootStar.BackgroundColor3 = Color3.fromRGB(200, 180, 255)
-    shootStar.BackgroundTransparency = 0.3
-    shootStar.BorderSizePixel = 0
-    shootStar.Rotation = 35
-    shootStar.ZIndex = 1
-    shootStar.Parent = cosmicContainer
-    Instance.new("UICorner", shootStar).CornerRadius = UDim.new(1, 0)
-
-    -- Trail
-    TweenService:Create(shootStar, TweenInfo.new(0.15, Enum.EasingStyle.Linear), {
-        Size = UDim2.new(0, 30, 0, 2)
-    }):Play()
-
+    local ss = Instance.new("Frame")
+    local sx = math.random() * 0.6 + 0.2
+    local sy = math.random() * 0.3
+    ss.Size = UDim2.new(0, 0, 0, 1)
+    ss.Position = UDim2.new(sx, 0, sy, 0)
+    ss.BackgroundColor3 = Color3.fromRGB(200, 180, 255)
+    ss.BackgroundTransparency = 0.3
+    ss.BorderSizePixel = 0
+    ss.Rotation = 35
+    ss.ZIndex = 1
+    ss.Parent = cosmicContainer
+    Instance.new("UICorner", ss).CornerRadius = UDim.new(1, 0)
+    TweenService:Create(ss, TweenInfo.new(0.15, Enum.EasingStyle.Linear), {Size = UDim2.new(0, 30, 0, 2)}):Play()
     task.wait(0.15)
-
-    TweenService:Create(shootStar, TweenInfo.new(0.5, Enum.EasingStyle.Quint), {
-        Position = UDim2.new(startX + 0.3, 0, startY + 0.25, 0),
+    TweenService:Create(ss, TweenInfo.new(0.5, Enum.EasingStyle.Quint), {
+        Position = UDim2.new(sx + 0.3, 0, sy + 0.25, 0),
         Size = UDim2.new(0, 2, 0, 1),
         BackgroundTransparency = 1
     }):Play()
-
-    task.delay(0.6, function() shootStar:Destroy() end)
+    task.delay(0.6, function() ss:Destroy() end)
 end
 
--- Floating particles (cosmic dust)
 local cosmicParticles = {}
 local function spawnCosmicParticle()
     local p = Instance.new("Frame")
-    local s = math.random(2, 4)
-    p.Size = UDim2.new(0, s, 0, s)
+    local sz = math.random(2, 4)
+    p.Size = UDim2.new(0, sz, 0, sz)
     p.Position = UDim2.new(math.random() * 0.9 + 0.05, 0, 1.05, 0)
-    p.BackgroundColor3 = Color3.fromHSV(
-        0.65 + math.random() * 0.2,
-        0.4 + math.random() * 0.3,
-        0.5 + math.random() * 0.5
-    )
+    p.BackgroundColor3 = Color3.fromHSV(0.65 + math.random() * 0.2, 0.4 + math.random() * 0.3, 0.5 + math.random() * 0.5)
     p.BackgroundTransparency = 0.4 + math.random() * 0.3
     p.BorderSizePixel = 0
     p.ZIndex = 1
     p.Parent = cosmicContainer
     Instance.new("UICorner", p).CornerRadius = UDim.new(1, 0)
-
     local dur = 4 + math.random() * 5
     local xd = (math.random() - 0.5) * 0.2
-
     TweenService:Create(p, TweenInfo.new(dur, Enum.EasingStyle.Linear), {
         Position = UDim2.new(p.Position.X.Scale + xd, 0, -0.1, 0),
-        BackgroundTransparency = 1,
-        Size = UDim2.new(0, 1, 0, 1)
+        BackgroundTransparency = 1, Size = UDim2.new(0, 1, 0, 1)
     }):Play()
-
     task.delay(dur, function() p:Destroy() end)
     table.insert(cosmicParticles, p)
     if #cosmicParticles > 20 then
@@ -230,65 +196,42 @@ local function spawnCosmicParticle()
     end
 end
 
--- Cosmic animation loop
 local cosmicTimer = 0
-local shootingStarTimer = 0
+local shootTimer = 0
 local nebulaTime = 0
 
 local cosmicConnection = RunService.Heartbeat:Connect(function(dt)
     if minimized then return end
-
     cosmicTimer = cosmicTimer + dt
-    shootingStarTimer = shootingStarTimer + dt
+    shootTimer = shootTimer + dt
     nebulaTime = nebulaTime + dt
 
-    -- Twinkle stars
-    for _, starData in ipairs(stars) do
-        if starData.frame and starData.frame.Parent then
-            local t = math.sin(cosmicTimer * starData.twinkleSpeed + starData.twinkleOffset)
-            starData.frame.BackgroundTransparency = starData.baseTransp + t * 0.25
+    for _, sd in ipairs(starsList) do
+        if sd.frame and sd.frame.Parent then
+            sd.frame.BackgroundTransparency = sd.baseTransp + math.sin(cosmicTimer * sd.speed + sd.offset) * 0.25
         end
     end
 
-    -- Float nebulae slowly
     if nebula1 and nebula1.Parent then
-        local nx = 0.15 + math.sin(nebulaTime * 0.1) * 0.05
-        local ny = 0.3 + math.cos(nebulaTime * 0.08) * 0.04
-        nebula1.Position = UDim2.new(nx, -90, ny, -90)
+        nebula1.Position = UDim2.new(0.15 + math.sin(nebulaTime * 0.1) * 0.05, -90, 0.3 + math.cos(nebulaTime * 0.08) * 0.04, -90)
     end
     if nebula2 and nebula2.Parent then
-        local nx = 0.75 + math.cos(nebulaTime * 0.12) * 0.04
-        local ny = 0.6 + math.sin(nebulaTime * 0.09) * 0.05
-        nebula2.Position = UDim2.new(nx, -75, ny, -75)
+        nebula2.Position = UDim2.new(0.75 + math.cos(nebulaTime * 0.12) * 0.04, -75, 0.6 + math.sin(nebulaTime * 0.09) * 0.05, -75)
     end
     if nebula3 and nebula3.Parent then
-        local nx = 0.5 + math.sin(nebulaTime * 0.07 + 1) * 0.06
-        local ny = 0.8 + math.cos(nebulaTime * 0.11) * 0.03
-        nebula3.Position = UDim2.new(nx, -60, ny, -60)
+        nebula3.Position = UDim2.new(0.5 + math.sin(nebulaTime * 0.07 + 1) * 0.06, -60, 0.8 + math.cos(nebulaTime * 0.11) * 0.03, -60)
     end
     if nebula4 and nebula4.Parent then
-        local nx = 0.85 + math.cos(nebulaTime * 0.09 + 2) * 0.04
-        local ny = 0.15 + math.sin(nebulaTime * 0.06) * 0.05
-        nebula4.Position = UDim2.new(nx, -100, ny, -100)
+        nebula4.Position = UDim2.new(0.85 + math.cos(nebulaTime * 0.09 + 2) * 0.04, -100, 0.15 + math.sin(nebulaTime * 0.06) * 0.05, -100)
     end
 
-    -- Nebula color breathing
     local hShift = math.sin(nebulaTime * 0.15) * 0.03
-    nebula1.BackgroundColor3 = Color3.fromHSV((0.75 + hShift) % 1, 0.7, 0.45)
-    nebula2.BackgroundColor3 = Color3.fromHSV((0.62 + hShift) % 1, 0.6, 0.5)
-    nebula3.BackgroundColor3 = Color3.fromHSV((0.85 + hShift) % 1, 0.65, 0.35)
+    if nebula1.Parent then nebula1.BackgroundColor3 = Color3.fromHSV((0.75 + hShift) % 1, 0.7, 0.45) end
+    if nebula2.Parent then nebula2.BackgroundColor3 = Color3.fromHSV((0.62 + hShift) % 1, 0.6, 0.5) end
+    if nebula3.Parent then nebula3.BackgroundColor3 = Color3.fromHSV((0.85 + hShift) % 1, 0.65, 0.35) end
 
-    -- Spawn cosmic particles
-    if cosmicTimer >= 0.5 then
-        cosmicTimer = 0
-        spawnCosmicParticle()
-    end
-
-    -- Shooting stars (random interval)
-    if shootingStarTimer >= 4 + math.random() * 6 then
-        shootingStarTimer = 0
-        createShootingStar()
-    end
+    if cosmicTimer >= 0.5 then cosmicTimer = 0; spawnCosmicParticle() end
+    if shootTimer >= 4 + math.random() * 6 then shootTimer = 0; createShootingStar() end
 end)
 
 -- ============================================
@@ -336,7 +279,7 @@ local function createRipple(parent)
     TweenService:Create(ripple, TweenInfo.new(0.6, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
         Size = UDim2.new(0, ms, 0, ms), BackgroundTransparency = 1
     }):Play()
-    task.delay(0.6, function() if ripple.Parent then ripple:Destroy() end end)
+    task.delay(0.6, function() if ripple and ripple.Parent then ripple:Destroy() end end)
 end
 
 -- ============================================
@@ -547,7 +490,7 @@ resizeHandle.MouseLeave:Connect(function()
 end)
 
 -- ============================================
--- TAB BAR (3 TABS)
+-- TAB BAR
 -- ============================================
 local tabBar = Instance.new("Frame")
 tabBar.Size = UDim2.new(1, -20, 0, 36)
@@ -616,7 +559,6 @@ local bypassTabBtn = makeTabBtn("⚡ Bypass", 0)
 local waypointTabBtn = makeTabBtn("📍 Waypoint", 1/3)
 local keybindTabBtn = makeTabBtn("⌨️ Keybind", 2/3)
 
--- Content frames
 local function makeContent(name, vis)
     local f = Instance.new("Frame")
     f.Name = name
@@ -633,7 +575,6 @@ local bypassContent = makeContent("Bypass", true)
 local waypointContent = makeContent("Waypoint", false)
 local keybindContent = makeContent("Keybind", false)
 
--- Tab switching
 local tabButtons = {bypassTabBtn, waypointTabBtn, keybindTabBtn}
 local tabContents = {bypassContent, waypointContent, keybindContent}
 local tabNames = {"Bypass", "Waypoint", "Keybind"}
@@ -647,10 +588,8 @@ local function switchTab(tabName)
         if n == tabName then ni = i end
     end
     currentTab = tabName
-
     TweenService:Create(tabHighlight, tweenInfo, {Position = UDim2.new(tabPositions[ni], 3, 0.5, -15)}):Play()
     TweenService:Create(tabIndicator, tweenInfo, {Position = UDim2.new(tabPositions[ni] + 1/6, -10, 1, 3)}):Play()
-
     for i, btn in ipairs(tabButtons) do
         if i == ni then
             TweenService:Create(btn, tweenFast, {TextColor3 = Color3.fromRGB(230, 220, 255)}):Play()
@@ -660,13 +599,11 @@ local function switchTab(tabName)
             btn.Font = Enum.Font.GothamMedium
         end
     end
-
     local sd = ni > oi and 1 or -1
     TweenService:Create(tabContents[oi], TweenInfo.new(0.2, Enum.EasingStyle.Quint), {
         Position = UDim2.new(-0.3 * sd, 10, 0, 95)
     }):Play()
     task.delay(0.15, function() tabContents[oi].Visible = false end)
-
     tabContents[ni].Position = UDim2.new(0.3 * sd, 10, 0, 95)
     tabContents[ni].Visible = true
     TweenService:Create(tabContents[ni], TweenInfo.new(0.3, Enum.EasingStyle.Quint), {
@@ -936,11 +873,7 @@ wpScroll.ZIndex = 4
 wpScroll.Parent = waypointContent
 Instance.new("UICorner", wpScroll).CornerRadius = UDim.new(0, 8)
 
-local wpScrollStroke = Instance.new("UIStroke")
-wpScrollStroke.Color = Color3.fromRGB(42, 36, 72)
-wpScrollStroke.Thickness = 1
-wpScrollStroke.Transparency = 0.4
-wpScrollStroke.Parent = wpScroll
+Instance.new("UIStroke", wpScroll).Color = Color3.fromRGB(42, 36, 72)
 
 local wpLayout = Instance.new("UIListLayout")
 wpLayout.SortOrder = Enum.SortOrder.LayoutOrder
@@ -1028,10 +961,11 @@ rdInput.BorderSizePixel = 0
 rdInput.ZIndex = 52
 rdInput.Parent = renameDialog
 Instance.new("UICorner", rdInput).CornerRadius = UDim.new(0, 8)
-local rdPad = Instance.new("UIPadding")
-rdPad.PaddingLeft = UDim.new(0, 10)
-rdPad.PaddingRight = UDim.new(0, 10)
-rdPad.Parent = rdInput
+
+local rdPadding = Instance.new("UIPadding")
+rdPadding.PaddingLeft = UDim.new(0, 10)
+rdPadding.PaddingRight = UDim.new(0, 10)
+rdPadding.Parent = rdInput
 
 local rdConfirm = Instance.new("TextButton")
 rdConfirm.Size = UDim2.new(0.48, -8, 0, 32)
@@ -1215,7 +1149,6 @@ local function createWpEntry(name, pos, idx)
     dl.Parent = e
     Instance.new("UICorner", dl).CornerRadius = UDim.new(0, 6)
 
-    -- Entrance
     TweenService:Create(e, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
         Size = UDim2.new(1, -8, 0, 40), BackgroundTransparency = 0
     }):Play()
@@ -1261,9 +1194,8 @@ local function createWpEntry(name, pos, idx)
 
     dl.MouseButton1Click:Connect(function()
         for i, wp in ipairs(waypoints) do if wp.index == idx then table.remove(waypoints, i); break end end
-        -- Clear any keybind assignments referencing this waypoint
-        for _, kb in pairs(keybinds) do
-            if kb.waypointIndex == idx then kb.waypointIndex = nil end
+        for sid, kb in pairs(keybinds) do
+            if kb and kb.waypointIndex == idx then kb.waypointIndex = nil end
         end
         for sid, _ in pairs(keybindSlotFrames) do updateKeybindDisplay(sid) end
         createRipple(dl)
@@ -1309,8 +1241,7 @@ saveBtn.MouseLeave:Connect(function() TweenService:Create(saveStroke, tweenFast,
 
 clearBtn.MouseButton1Click:Connect(function()
     createRipple(clearBtn); waypoints = {}
-    -- Clear all keybind waypoint assignments
-    for _, kb in pairs(keybinds) do kb.waypointIndex = nil end
+    for _, kb in pairs(keybinds) do if kb then kb.waypointIndex = nil end end
     for sid, _ in pairs(keybindSlotFrames) do updateKeybindDisplay(sid) end
     local entries = {}
     for _, c in ipairs(wpScroll:GetChildren()) do if c:IsA("Frame") and c.Name:match("Wp_") then table.insert(entries, c) end end
@@ -1331,148 +1262,109 @@ clearBtn.MouseEnter:Connect(function() TweenService:Create(clearStroke, tweenFas
 clearBtn.MouseLeave:Connect(function() TweenService:Create(clearStroke, tweenFast, {Color = Color3.fromRGB(100, 40, 40), Transparency = 0.4}):Play() end)
 
 -- ============================================
--- KEYBIND INPUT HANDLER (FIXED)
+-- KEYBIND TAB
 -- ============================================
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-    if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
+local kbTitle = Instance.new("TextLabel")
+kbTitle.Size = UDim2.new(1, 0, 0, 22)
+kbTitle.Position = UDim2.new(0, 0, 0, 4)
+kbTitle.BackgroundTransparency = 1
+kbTitle.Text = "⌨️  Keybind Slots — Press key to teleport"
+kbTitle.TextColor3 = Color3.fromRGB(170, 165, 215)
+kbTitle.TextSize = 11
+kbTitle.Font = Enum.Font.GothamBold
+kbTitle.TextXAlignment = Enum.TextXAlignment.Left
+kbTitle.ZIndex = 4
+kbTitle.Parent = keybindContent
 
-    -- Listening mode
-    if listeningForKey then
-        local sid = listeningForKey
-        local kc = input.KeyCode
+local kbSubtitle = Instance.new("TextLabel")
+kbSubtitle.Size = UDim2.new(1, 0, 0, 14)
+kbSubtitle.Position = UDim2.new(0, 0, 0, 24)
+kbSubtitle.BackgroundTransparency = 1
+kbSubtitle.Text = "Click ⚙️ to assign waypoint. Double-click to unassign."
+kbSubtitle.TextColor3 = Color3.fromRGB(85, 80, 120)
+kbSubtitle.TextSize = 8
+kbSubtitle.Font = Enum.Font.Gotham
+kbSubtitle.TextXAlignment = Enum.TextXAlignment.Left
+kbSubtitle.ZIndex = 4
+kbSubtitle.Parent = keybindContent
 
-        -- Cancel listening first so the pulse coroutine stops BEFORE we update display
-        listeningForKey = nil
+local addKbBtn = Instance.new("TextButton")
+addKbBtn.Size = UDim2.new(1, 0, 0, 34)
+addKbBtn.Position = UDim2.new(0, 0, 0, 42)
+addKbBtn.BackgroundColor3 = Color3.fromRGB(30, 50, 35)
+addKbBtn.Text = ""
+addKbBtn.BorderSizePixel = 0
+addKbBtn.AutoButtonColor = false
+addKbBtn.ClipsDescendants = true
+addKbBtn.ZIndex = 4
+addKbBtn.Parent = keybindContent
+Instance.new("UICorner", addKbBtn).CornerRadius = UDim.new(0, 8)
 
-        if kc == Enum.KeyCode.Escape then
-            -- Just cancel, restore display
-            local s = keybindSlotFrames[sid]
-            if s and s.Parent then
-                local kbtn = s:FindFirstChild("KeyBtn")
-                if kbtn then
-                    local kl = kbtn:FindFirstChild("KeyLabel") or kbtn:FindFirstChildWhichIsA("TextLabel")
-                    if kl then
-                        kl.TextTransparency = 0
-                    end
-                    local ks = kbtn:FindFirstChildWhichIsA("UIStroke")
-                    if ks then TweenService:Create(ks, tweenFast, {Color = Color3.fromRGB(62, 52, 110)}):Play() end
-                    TweenService:Create(kbtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(35, 30, 58)}):Play()
-                end
-                updateKeybindDisplay(sid)
-            end
-            return
-        end
+local addKbStroke = Instance.new("UIStroke")
+addKbStroke.Color = Color3.fromRGB(50, 100, 55)
+addKbStroke.Thickness = 1
+addKbStroke.Transparency = 0.3
+addKbStroke.Parent = addKbBtn
 
-        -- Check duplicates
-        local isDuplicate = false
-        for id, kb in pairs(keybinds) do
-            if id ~= sid and kb and kb.key == kc then
-                isDuplicate = true
-                break
-            end
-        end
+local addKbLabel = Instance.new("TextLabel")
+addKbLabel.Size = UDim2.new(1, 0, 1, 0)
+addKbLabel.BackgroundTransparency = 1
+addKbLabel.Text = "➕  Add Keybind"
+addKbLabel.TextColor3 = Color3.fromRGB(130, 220, 140)
+addKbLabel.TextSize = 12
+addKbLabel.Font = Enum.Font.GothamBold
+addKbLabel.ZIndex = 5
+addKbLabel.Parent = addKbBtn
 
-        if isDuplicate then
-            local s = keybindSlotFrames[sid]
-            if s and s.Parent then
-                -- Reset the key button visual since we cancelled listening
-                local kbtn = s:FindFirstChild("KeyBtn")
-                if kbtn then
-                    local kl = kbtn:FindFirstChild("KeyLabel") or kbtn:FindFirstChildWhichIsA("TextLabel")
-                    if kl then
-                        kl.TextTransparency = 0
-                    end
-                    local ks = kbtn:FindFirstChildWhichIsA("UIStroke")
-                    if ks then TweenService:Create(ks, tweenFast, {Color = Color3.fromRGB(62, 52, 110)}):Play() end
-                    TweenService:Create(kbtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(35, 30, 58)}):Play()
-                end
-                updateKeybindDisplay(sid)
+local kbDivider = Instance.new("Frame")
+kbDivider.Size = UDim2.new(1, 0, 0, 1)
+kbDivider.Position = UDim2.new(0, 0, 0, 82)
+kbDivider.BackgroundColor3 = Color3.fromRGB(50, 42, 90)
+kbDivider.BackgroundTransparency = 0.4
+kbDivider.BorderSizePixel = 0
+kbDivider.ZIndex = 4
+kbDivider.Parent = keybindContent
 
-                -- Flash red for error
-                TweenService:Create(s, tweenFast, {BackgroundColor3 = Color3.fromRGB(55, 20, 20)}):Play()
-                task.delay(0.3, function()
-                    if s and s.Parent then
-                        TweenService:Create(s, tweenFast, {BackgroundColor3 = Color3.fromRGB(20, 18, 38)}):Play()
-                    end
-                end)
-            end
-            return
-        end
+local kbScroll = Instance.new("ScrollingFrame")
+kbScroll.Size = UDim2.new(1, 0, 1, -90)
+kbScroll.Position = UDim2.new(0, 0, 0, 88)
+kbScroll.BackgroundColor3 = Color3.fromRGB(14, 12, 26)
+kbScroll.BorderSizePixel = 0
+kbScroll.ScrollBarThickness = 3
+kbScroll.ScrollBarImageColor3 = Color3.fromRGB(90, 60, 170)
+kbScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+kbScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+kbScroll.ZIndex = 4
+kbScroll.Parent = keybindContent
+Instance.new("UICorner", kbScroll).CornerRadius = UDim.new(0, 8)
 
-        -- Valid key - assign it
-        if keybinds[sid] then
-            keybinds[sid].key = kc
-        end
+Instance.new("UIStroke", kbScroll).Color = Color3.fromRGB(42, 36, 72)
 
-        -- Force update the display immediately with correct values
-        local s = keybindSlotFrames[sid]
-        if s and s.Parent then
-            local kbtn = s:FindFirstChild("KeyBtn")
-            if kbtn then
-                -- Directly set the key label text and color (don't rely on updateKeybindDisplay alone)
-                local kl = kbtn:FindFirstChild("KeyLabel") or kbtn:FindFirstChildWhichIsA("TextLabel")
-                if kl then
-                    kl.Text = kc.Name
-                    kl.TextTransparency = 0
-                    kl.TextColor3 = Color3.fromRGB(195, 175, 250)
-                end
+local kbLayout = Instance.new("UIListLayout")
+kbLayout.SortOrder = Enum.SortOrder.LayoutOrder
+kbLayout.Padding = UDim.new(0, 5)
+kbLayout.Parent = kbScroll
 
-                -- Reset button styling
-                local ks = kbtn:FindFirstChildWhichIsA("UIStroke")
-                if ks then TweenService:Create(ks, tweenFast, {Color = Color3.fromRGB(62, 52, 110)}):Play() end
+local kbPad = Instance.new("UIPadding")
+kbPad.PaddingTop = UDim.new(0, 5)
+kbPad.PaddingBottom = UDim.new(0, 5)
+kbPad.PaddingLeft = UDim.new(0, 5)
+kbPad.PaddingRight = UDim.new(0, 5)
+kbPad.Parent = kbScroll
 
-                -- Green flash for success
-                TweenService:Create(kbtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(28, 62, 28)}):Play()
-                task.delay(0.25, function()
-                    if kbtn and kbtn.Parent then
-                        TweenService:Create(kbtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(35, 30, 58)}):Play()
-                    end
-                end)
-            end
-
-            -- Also run the full display update for the dot etc
-            updateKeybindDisplay(sid)
-
-            -- Slot flash
-            TweenService:Create(s, tweenFast, {BackgroundColor3 = Color3.fromRGB(25, 40, 25)}):Play()
-            task.delay(0.25, function()
-                if s and s.Parent then
-                    TweenService:Create(s, tweenFast, {BackgroundColor3 = Color3.fromRGB(20, 18, 38)}):Play()
-                end
-            end)
-        end
-        return
-    end
-
-    -- Execute keybinds (not listening mode)
-    for sid, kb in pairs(keybinds) do
-        if kb and kb.key == input.KeyCode and kb.waypointIndex then
-            local pos2 = getWpPos(kb.waypointIndex)
-            if pos2 then
-                character = player.Character
-                if character and character:FindFirstChild("HumanoidRootPart") then
-                    character.HumanoidRootPart.CFrame = CFrame.new(pos2)
-                    local s = keybindSlotFrames[sid]
-                    if s and s.Parent then
-                        TweenService:Create(s, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(35, 110, 35)}):Play()
-                        local ss = s:FindFirstChildWhichIsA("UIStroke")
-                        if ss then TweenService:Create(ss, TweenInfo.new(0.1), {Color = Color3.fromRGB(70, 195, 70)}):Play() end
-                        task.delay(0.35, function()
-                            if s and s.Parent then
-                                TweenService:Create(s, tweenFast, {BackgroundColor3 = Color3.fromRGB(20, 18, 38)}):Play()
-                                if ss then TweenService:Create(ss, tweenFast, {Color = Color3.fromRGB(44, 38, 72)}):Play() end
-                            end
-                        end)
-                    end
-                end
-            end
-        end
-    end
-end)
+local noKbLabel = Instance.new("TextLabel")
+noKbLabel.Name = "NoKb"
+noKbLabel.Size = UDim2.new(1, 0, 0, 45)
+noKbLabel.BackgroundTransparency = 1
+noKbLabel.Text = "No keybinds created yet.\nClick '➕ Add Keybind' above!"
+noKbLabel.TextColor3 = Color3.fromRGB(60, 55, 85)
+noKbLabel.TextSize = 11
+noKbLabel.Font = Enum.Font.Gotham
+noKbLabel.ZIndex = 5
+noKbLabel.Parent = kbScroll
 
 -- ============================================
--- KEYBIND SLOT HELPERS
+-- KEYBIND HELPERS (FORWARD DECLARED)
 -- ============================================
 local function getWpName(wpIdx)
     if not wpIdx then return "None" end
@@ -1492,10 +1384,15 @@ function updateKeybindDisplay(slotId)
     local kb = keybinds[slotId]
     if not kb then return end
 
-    local kl = slot:FindFirstChild("KeyLabel")
+    local kl = slot:FindFirstChild("KeyLabel", true)
     if kl then
+        if listeningForKey == slotId then
+            -- Don't override if currently listening
+            return
+        end
         kl.Text = kb.key and kb.key.Name or "?"
         kl.TextColor3 = kb.key and Color3.fromRGB(195, 175, 250) or Color3.fromRGB(90, 82, 125)
+        kl.TextTransparency = 0
     end
 
     local wl = slot:FindFirstChild("WpLabel")
@@ -1509,14 +1406,14 @@ function updateKeybindDisplay(slotId)
         end
     end
 
-    local sd = slot:FindFirstChild("SlotDot")
-    if sd then
+    local sdot = slot:FindFirstChild("SlotDot")
+    if sdot then
         if kb.key and kb.waypointIndex then
-            TweenService:Create(sd, tweenFast, {BackgroundColor3 = Color3.fromRGB(90, 210, 90)}):Play()
+            TweenService:Create(sdot, tweenFast, {BackgroundColor3 = Color3.fromRGB(90, 210, 90)}):Play()
         elseif kb.key then
-            TweenService:Create(sd, tweenFast, {BackgroundColor3 = Color3.fromRGB(210, 170, 50)}):Play()
+            TweenService:Create(sdot, tweenFast, {BackgroundColor3 = Color3.fromRGB(210, 170, 50)}):Play()
         else
-            TweenService:Create(sd, tweenFast, {BackgroundColor3 = Color3.fromRGB(70, 68, 70)}):Play()
+            TweenService:Create(sdot, tweenFast, {BackgroundColor3 = Color3.fromRGB(70, 68, 70)}):Play()
         end
     end
 end
@@ -1546,7 +1443,6 @@ local function createKeybindSlot(slotId)
     slotStroke.Transparency = 0.4
     slotStroke.Parent = slot
 
-    -- Slot badge
     local badge = Instance.new("TextLabel")
     badge.Size = UDim2.new(0, 20, 0, 20)
     badge.Position = UDim2.new(0, 7, 0, 9)
@@ -1559,7 +1455,6 @@ local function createKeybindSlot(slotId)
     badge.Parent = slot
     Instance.new("UICorner", badge).CornerRadius = UDim.new(0, 5)
 
-    -- Status dot
     local sDot = Instance.new("Frame")
     sDot.Name = "SlotDot"
     sDot.Size = UDim2.new(0, 6, 0, 6)
@@ -1570,7 +1465,6 @@ local function createKeybindSlot(slotId)
     sDot.Parent = slot
     Instance.new("UICorner", sDot).CornerRadius = UDim.new(1, 0)
 
-    -- Key button
     local keyBtn = Instance.new("TextButton")
     keyBtn.Name = "KeyBtn"
     keyBtn.Size = UDim2.new(0, 48, 0, 26)
@@ -1584,11 +1478,11 @@ local function createKeybindSlot(slotId)
     keyBtn.Parent = slot
     Instance.new("UICorner", keyBtn).CornerRadius = UDim.new(0, 7)
 
-    local kbStroke = Instance.new("UIStroke")
-    kbStroke.Color = Color3.fromRGB(62, 52, 110)
-    kbStroke.Thickness = 1
-    kbStroke.Transparency = 0.3
-    kbStroke.Parent = keyBtn
+    local kbBtnStroke = Instance.new("UIStroke")
+    kbBtnStroke.Color = Color3.fromRGB(62, 52, 110)
+    kbBtnStroke.Thickness = 1
+    kbBtnStroke.Transparency = 0.3
+    kbBtnStroke.Parent = keyBtn
 
     local keyLabel = Instance.new("TextLabel")
     keyLabel.Name = "KeyLabel"
@@ -1601,7 +1495,6 @@ local function createKeybindSlot(slotId)
     keyLabel.ZIndex = 7
     keyLabel.Parent = keyBtn
 
-    -- Arrow
     local arrow = Instance.new("TextLabel")
     arrow.Size = UDim2.new(0, 16, 0, 26)
     arrow.Position = UDim2.new(0, 84, 0, 6)
@@ -1613,7 +1506,6 @@ local function createKeybindSlot(slotId)
     arrow.ZIndex = 6
     arrow.Parent = slot
 
-    -- Waypoint label
     local wpLabel = Instance.new("TextLabel")
     wpLabel.Name = "WpLabel"
     wpLabel.Size = UDim2.new(1, -185, 0, 26)
@@ -1628,7 +1520,6 @@ local function createKeybindSlot(slotId)
     wpLabel.ZIndex = 6
     wpLabel.Parent = slot
 
-    -- Gear button
     local gearBtn = Instance.new("TextButton")
     gearBtn.Name = "GearBtn"
     gearBtn.Size = UDim2.new(0, 26, 0, 26)
@@ -1648,9 +1539,7 @@ local function createKeybindSlot(slotId)
     gearStroke.Transparency = 0.4
     gearStroke.Parent = gearBtn
 
-    -- Delete keybind button
     local delKbBtn = Instance.new("TextButton")
-    delKbBtn.Name = "DelKbBtn"
     delKbBtn.Size = UDim2.new(0, 26, 0, 26)
     delKbBtn.Position = UDim2.new(1, -32, 0, 6)
     delKbBtn.BackgroundColor3 = Color3.fromRGB(60, 22, 22)
@@ -1681,11 +1570,7 @@ local function createKeybindSlot(slotId)
     settingsPanel.Parent = slot
     Instance.new("UICorner", settingsPanel).CornerRadius = UDim.new(0, 7)
 
-    local spStroke = Instance.new("UIStroke")
-    spStroke.Color = Color3.fromRGB(48, 40, 82)
-    spStroke.Thickness = 1
-    spStroke.Transparency = 0.4
-    spStroke.Parent = settingsPanel
+    Instance.new("UIStroke", settingsPanel).Color = Color3.fromRGB(48, 40, 82)
 
     local spTitle = Instance.new("TextLabel")
     spTitle.Size = UDim2.new(1, 0, 0, 20)
@@ -1779,34 +1664,36 @@ local function createKeybindSlot(slotId)
             local lastClick = 0
             wb.MouseButton1Click:Connect(function()
                 local now = tick()
-                if keybinds[slotId].waypointIndex == wp.index and (now - lastClick) < 0.4 then
+                if keybinds[slotId] and keybinds[slotId].waypointIndex == wp.index and (now - lastClick) < 0.4 then
                     keybinds[slotId].waypointIndex = nil
                     createRipple(wb)
                     TweenService:Create(wb, tweenFast, {BackgroundColor3 = Color3.fromRGB(70, 25, 25)}):Play()
                     task.wait(0.15)
                     updateKeybindDisplay(slotId); refreshWpButtons()
                     TweenService:Create(slot, tweenFast, {BackgroundColor3 = Color3.fromRGB(42, 20, 20)}):Play()
-                    task.wait(0.2)
-                    TweenService:Create(slot, tweenFast, {BackgroundColor3 = Color3.fromRGB(20, 18, 38)}):Play()
+                    task.delay(0.2, function()
+                        if slot and slot.Parent then TweenService:Create(slot, tweenFast, {BackgroundColor3 = Color3.fromRGB(20, 18, 38)}):Play() end
+                    end)
                 else
-                    keybinds[slotId].waypointIndex = wp.index
+                    if keybinds[slotId] then keybinds[slotId].waypointIndex = wp.index end
                     createRipple(wb)
                     updateKeybindDisplay(slotId); refreshWpButtons()
                     TweenService:Create(slot, tweenFast, {BackgroundColor3 = Color3.fromRGB(22, 42, 22)}):Play()
-                    task.wait(0.2)
-                    TweenService:Create(slot, tweenFast, {BackgroundColor3 = Color3.fromRGB(20, 18, 38)}):Play()
+                    task.delay(0.2, function()
+                        if slot and slot.Parent then TweenService:Create(slot, tweenFast, {BackgroundColor3 = Color3.fromRGB(20, 18, 38)}):Play() end
+                    end)
                 end
                 lastClick = now
             end)
 
             wb.MouseEnter:Connect(function()
-                if keybinds[slotId].waypointIndex ~= wp.index then
+                if not keybinds[slotId] or keybinds[slotId].waypointIndex ~= wp.index then
                     TweenService:Create(wb, tweenFast, {BackgroundColor3 = Color3.fromRGB(38, 34, 68)}):Play()
                     TweenService:Create(wbStroke, tweenFast, {Color = Color3.fromRGB(82, 68, 150)}):Play()
                 end
             end)
             wb.MouseLeave:Connect(function()
-                if keybinds[slotId].waypointIndex ~= wp.index then
+                if not keybinds[slotId] or keybinds[slotId].waypointIndex ~= wp.index then
                     TweenService:Create(wb, tweenFast, {BackgroundColor3 = Color3.fromRGB(28, 25, 52)}):Play()
                     TweenService:Create(wbStroke, tweenFast, {Color = Color3.fromRGB(48, 42, 78)}):Play()
                 end
@@ -1843,21 +1730,19 @@ local function createKeybindSlot(slotId)
             TweenService:Create(slot, TweenInfo.new(0.25, Enum.EasingStyle.Quint), {Size = UDim2.new(1, -10, 0, 38)}):Play()
             TweenService:Create(gearBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(38, 34, 68)}):Play()
             TweenService:Create(gearBtn, TweenInfo.new(0.3), {Rotation = 0}):Play()
-            task.delay(0.25, function() settingsPanel.Visible = false end)
+            task.delay(0.25, function() if settingsPanel and settingsPanel.Parent then settingsPanel.Visible = false end end)
         end
     end)
 
-        -- Key button
+    -- Key button (FIXED)
     keyBtn.MouseButton1Click:Connect(function()
         createRipple(keyBtn)
         if listeningForKey == slotId then
-            -- Cancel listening
             listeningForKey = nil
-            -- Wait a frame for the pulse coroutine to notice and stop
             task.wait()
             keyLabel.TextTransparency = 0
             updateKeybindDisplay(slotId)
-            TweenService:Create(kbStroke, tweenFast, {Color = Color3.fromRGB(62, 52, 110)}):Play()
+            TweenService:Create(kbBtnStroke, tweenFast, {Color = Color3.fromRGB(62, 52, 110)}):Play()
             TweenService:Create(keyBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(35, 30, 58)}):Play()
             return
         end
@@ -1865,7 +1750,7 @@ local function createKeybindSlot(slotId)
         keyLabel.Text = "..."
         keyLabel.TextTransparency = 0
         keyLabel.TextColor3 = Color3.fromRGB(250, 195, 90)
-        TweenService:Create(kbStroke, tweenFast, {Color = Color3.fromRGB(195, 155, 55)}):Play()
+        TweenService:Create(kbBtnStroke, tweenFast, {Color = Color3.fromRGB(195, 155, 55)}):Play()
         TweenService:Create(keyBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(55, 45, 25)}):Play()
         task.spawn(function()
             local myListenId = slotId
@@ -1878,28 +1763,25 @@ local function createKeybindSlot(slotId)
                 TweenService:Create(keyLabel, TweenInfo.new(0.35), {TextTransparency = 0}):Play()
                 task.wait(0.35)
             end
-            -- Ensure text is fully visible when we exit the loop
             if keyLabel and keyLabel.Parent then
                 keyLabel.TextTransparency = 0
             end
         end)
     end)
+
     -- Delete keybind
     delKbBtn.MouseButton1Click:Connect(function()
         createRipple(delKbBtn)
-        if listeningForKey == slotId then listeningForKey = nil end
+        if listeningForKey == slotId then listeningForKey = nil; task.wait() end
         keybinds[slotId] = nil
         keybindSettingsOpen[slotId] = nil
         keybindSlotFrames[slotId] = nil
-
         TweenService:Create(slot, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(55, 18, 18)}):Play()
         task.wait(0.1)
         TweenService:Create(slot, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
             Size = UDim2.new(1, -10, 0, 0), BackgroundTransparency = 1
         }):Play()
         task.wait(0.3); slot:Destroy()
-
-        -- Check if any keybinds remain
         local hasAny = false
         for _, _ in pairs(keybindSlotFrames) do hasAny = true; break end
         noKbLabel.Visible = not hasAny
@@ -1907,27 +1789,17 @@ local function createKeybindSlot(slotId)
 
     -- Hover effects
     gearBtn.MouseEnter:Connect(function()
-        if not keybindSettingsOpen[slotId] then
-            TweenService:Create(gearBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(50, 42, 88)}):Play()
-        end
+        if not keybindSettingsOpen[slotId] then TweenService:Create(gearBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(50, 42, 88)}):Play() end
     end)
     gearBtn.MouseLeave:Connect(function()
-        if not keybindSettingsOpen[slotId] then
-            TweenService:Create(gearBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(38, 34, 68)}):Play()
-        end
+        if not keybindSettingsOpen[slotId] then TweenService:Create(gearBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(38, 34, 68)}):Play() end
     end)
-
     keyBtn.MouseEnter:Connect(function()
-        if listeningForKey ~= slotId then
-            TweenService:Create(keyBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(44, 38, 72)}):Play()
-        end
+        if listeningForKey ~= slotId then TweenService:Create(keyBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(44, 38, 72)}):Play() end
     end)
     keyBtn.MouseLeave:Connect(function()
-        if listeningForKey ~= slotId then
-            TweenService:Create(keyBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(35, 30, 58)}):Play()
-        end
+        if listeningForKey ~= slotId then TweenService:Create(keyBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(35, 30, 58)}):Play() end
     end)
-
     delKbBtn.MouseEnter:Connect(function()
         TweenService:Create(delKbBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(95, 30, 30)}):Play()
         TweenService:Create(delKbStroke, tweenFast, {Transparency = 0}):Play()
@@ -1936,7 +1808,6 @@ local function createKeybindSlot(slotId)
         TweenService:Create(delKbBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(60, 22, 22)}):Play()
         TweenService:Create(delKbStroke, tweenFast, {Transparency = 0.5}):Play()
     end)
-
     slot.MouseEnter:Connect(function()
         TweenService:Create(slotStroke, tweenFast, {Color = Color3.fromRGB(72, 58, 130), Transparency = 0}):Play()
         TweenService:Create(slot, tweenFast, {BackgroundColor3 = Color3.fromRGB(25, 22, 44)}):Play()
@@ -1946,7 +1817,7 @@ local function createKeybindSlot(slotId)
         TweenService:Create(slot, tweenFast, {BackgroundColor3 = Color3.fromRGB(20, 18, 38)}):Play()
     end)
 
-    -- Entrance animation
+    -- Entrance
     TweenService:Create(slot, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
         Size = UDim2.new(1, -10, 0, 38), BackgroundTransparency = 0
     }):Play()
@@ -1961,7 +1832,6 @@ addKbBtn.MouseButton1Click:Connect(function()
     createRipple(addKbBtn)
     keybindCounter += 1
     createKeybindSlot(keybindCounter)
-
     TweenService:Create(addKbBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(25, 80, 30)}):Play()
     TweenService:Create(addKbStroke, tweenFast, {Color = Color3.fromRGB(55, 180, 65)}):Play()
     addKbLabel.Text = "✅  Added!"; task.wait(0.5)
@@ -1980,64 +1850,86 @@ addKbBtn.MouseLeave:Connect(function()
 end)
 
 -- ============================================
--- KEYBIND INPUT HANDLER
+-- KEYBIND INPUT HANDLER (FIXED)
 -- ============================================
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
     if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
 
-    -- Listening mode
     if listeningForKey then
         local sid = listeningForKey
         local kc = input.KeyCode
 
+        -- Stop listening FIRST so pulse coroutine exits
+        listeningForKey = nil
+
         if kc == Enum.KeyCode.Escape then
-            listeningForKey = nil
-            updateKeybindDisplay(sid)
-            local kb2 = keybindSlotFrames[sid]
-            if kb2 then
-                local kbtn = kb2:FindFirstChild("KeyBtn")
+            local s = keybindSlotFrames[sid]
+            if s and s.Parent then
+                local kbtn = s:FindFirstChild("KeyBtn")
                 if kbtn then
+                    local kl = kbtn:FindFirstChild("KeyLabel")
+                    if kl then kl.TextTransparency = 0 end
                     local ks = kbtn:FindFirstChildWhichIsA("UIStroke")
                     if ks then TweenService:Create(ks, tweenFast, {Color = Color3.fromRGB(62, 52, 110)}):Play() end
                     TweenService:Create(kbtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(35, 30, 58)}):Play()
                 end
+                updateKeybindDisplay(sid)
             end
             return
         end
 
         -- Check duplicates
+        local isDuplicate = false
         for id, kb in pairs(keybinds) do
-            if id ~= sid and kb.key == kc then
-                local s = keybindSlotFrames[sid]
-                if s then
-                    TweenService:Create(s, tweenFast, {BackgroundColor3 = Color3.fromRGB(55, 20, 20)}):Play()
-                    task.wait(0.3)
-                    TweenService:Create(s, tweenFast, {BackgroundColor3 = Color3.fromRGB(20, 18, 38)}):Play()
-                end
-                return
-            end
+            if id ~= sid and kb and kb.key == kc then isDuplicate = true; break end
         end
 
-        if keybinds[sid] then
-            keybinds[sid].key = kc
+        if isDuplicate then
+            local s = keybindSlotFrames[sid]
+            if s and s.Parent then
+                local kbtn = s:FindFirstChild("KeyBtn")
+                if kbtn then
+                    local kl = kbtn:FindFirstChild("KeyLabel")
+                    if kl then kl.TextTransparency = 0 end
+                    local ks = kbtn:FindFirstChildWhichIsA("UIStroke")
+                    if ks then TweenService:Create(ks, tweenFast, {Color = Color3.fromRGB(62, 52, 110)}):Play() end
+                    TweenService:Create(kbtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(35, 30, 58)}):Play()
+                end
+                updateKeybindDisplay(sid)
+                TweenService:Create(s, tweenFast, {BackgroundColor3 = Color3.fromRGB(55, 20, 20)}):Play()
+                task.delay(0.3, function()
+                    if s and s.Parent then TweenService:Create(s, tweenFast, {BackgroundColor3 = Color3.fromRGB(20, 18, 38)}):Play() end
+                end)
+            end
+            return
         end
-        listeningForKey = nil
-        updateKeybindDisplay(sid)
+
+        -- Valid key
+        if keybinds[sid] then keybinds[sid].key = kc end
 
         local s = keybindSlotFrames[sid]
-        if s then
+        if s and s.Parent then
             local kbtn = s:FindFirstChild("KeyBtn")
             if kbtn then
+                local kl = kbtn:FindFirstChild("KeyLabel")
+                if kl then
+                    kl.Text = kc.Name
+                    kl.TextTransparency = 0
+                    kl.TextColor3 = Color3.fromRGB(195, 175, 250)
+                end
                 local ks = kbtn:FindFirstChildWhichIsA("UIStroke")
                 if ks then TweenService:Create(ks, tweenFast, {Color = Color3.fromRGB(62, 52, 110)}):Play() end
                 TweenService:Create(kbtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(28, 62, 28)}):Play()
-                task.wait(0.2)
-                TweenService:Create(kbtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(35, 30, 58)}):Play()
+                task.delay(0.25, function()
+                    if kbtn and kbtn.Parent then TweenService:Create(kbtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(35, 30, 58)}):Play() end
+                end)
             end
+            updateKeybindDisplay(sid)
             TweenService:Create(s, tweenFast, {BackgroundColor3 = Color3.fromRGB(25, 40, 25)}):Play()
-            task.wait(0.2)
-            TweenService:Create(s, tweenFast, {BackgroundColor3 = Color3.fromRGB(20, 18, 38)}):Play()
+            task.delay(0.25, function()
+                if s and s.Parent then TweenService:Create(s, tweenFast, {BackgroundColor3 = Color3.fromRGB(20, 18, 38)}):Play() end
+            end)
         end
         return
     end
@@ -2055,9 +1947,12 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
                         TweenService:Create(s, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(35, 110, 35)}):Play()
                         local ss = s:FindFirstChildWhichIsA("UIStroke")
                         if ss then TweenService:Create(ss, TweenInfo.new(0.1), {Color = Color3.fromRGB(70, 195, 70)}):Play() end
-                        task.wait(0.3)
-                        TweenService:Create(s, tweenFast, {BackgroundColor3 = Color3.fromRGB(20, 18, 38)}):Play()
-                        if ss then TweenService:Create(ss, tweenFast, {Color = Color3.fromRGB(44, 38, 72)}):Play() end
+                        task.delay(0.35, function()
+                            if s and s.Parent then
+                                TweenService:Create(s, tweenFast, {BackgroundColor3 = Color3.fromRGB(20, 18, 38)}):Play()
+                                if ss then TweenService:Create(ss, tweenFast, {Color = Color3.fromRGB(44, 38, 72)}):Play() end
+                            end
+                        end)
                     end
                 end
             end
@@ -2102,6 +1997,7 @@ closeBtn.MouseButton1Click:Connect(function()
     if outlineConnection then outlineConnection:Disconnect() end
     if cosmicConnection then cosmicConnection:Disconnect() end
     if dotPulseConnection then dotPulseConnection:Disconnect() end
+    listeningForKey = nil
     TweenService:Create(mainStroke, TweenInfo.new(0.1), {Color = Color3.fromRGB(255, 200, 255), Thickness = 4}):Play()
     task.wait(0.1)
     TweenService:Create(outerGlow, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
@@ -2136,8 +2032,7 @@ for _, gl in ipairs({glowLayer1, glowLayer2, glowLayer3, shadow}) do gl.ImageTra
 topBarLine.Size = UDim2.new(0, 0, 0, 2)
 topBarLine.Position = UDim2.new(0.5, 0, 1, -2)
 
--- Hide cosmic initially
-for _, sd2 in ipairs(stars) do if sd2.frame then sd2.frame.BackgroundTransparency = 1 end end
+for _, sd in ipairs(starsList) do if sd.frame then sd.frame.BackgroundTransparency = 1 end end
 nebula1.BackgroundTransparency = 1; nebula2.BackgroundTransparency = 1
 nebula3.BackgroundTransparency = 1; nebula4.BackgroundTransparency = 1; nebula5.BackgroundTransparency = 1
 
@@ -2150,12 +2045,9 @@ TweenService:Create(mainFrame, TweenInfo.new(0.4), {BackgroundTransparency = 0})
 
 task.wait(0.25)
 
--- Fade in cosmic background
-for _, sd2 in ipairs(stars) do
-    if sd2.frame and sd2.frame.Parent then
-        TweenService:Create(sd2.frame, TweenInfo.new(0.5 + math.random() * 0.5), {
-            BackgroundTransparency = sd2.baseTransp
-        }):Play()
+for _, sd in ipairs(starsList) do
+    if sd.frame and sd.frame.Parent then
+        TweenService:Create(sd.frame, TweenInfo.new(0.5 + math.random() * 0.5), {BackgroundTransparency = sd.baseTransp}):Play()
     end
 end
 
@@ -2203,7 +2095,6 @@ TweenService:Create(bypassContent, TweenInfo.new(0.3, Enum.EasingStyle.Quint), {
     Position = UDim2.new(0, 10, 0, 95)
 }):Play()
 
--- Initial shooting star
 task.wait(0.5)
 createShootingStar()
 
