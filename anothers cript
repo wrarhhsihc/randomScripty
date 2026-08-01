@@ -1,7 +1,8 @@
 --[[
     ProximityPrompt Bypass + Waypoint + Keybind GUI
-    Features: Draggable, Resizable, Minimizable, Renamable Waypoints, Animated Glowing Outline
-    Keybind Tab: Bind keys to teleport to waypoints instantly
+    Features: Draggable, Resizable, Minimizable, Renamable Waypoints
+    Keybind Tab: Dynamic keybind creation, assign keys to waypoints
+    Cosmic background effects with stars and nebula
 ]]
 
 local player = game.Players.LocalPlayer
@@ -11,27 +12,26 @@ local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
 local enabled = false
-local loopConnection = nil
 local currentTab = "Bypass"
 local minimized = false
 local waypoints = {}
 local waypointCounter = 0
+local keybinds = {}
+local keybindCounter = 0
+local listeningForKey = nil
+local keybindSlotFrames = {}
+local keybindSettingsOpen = {}
 
 local MIN_WIDTH = 300
-local MIN_HEIGHT = 320
-local MAX_WIDTH = 540
-local MAX_HEIGHT = 560
-
--- Keybind system
-local keybinds = {} -- {key = Enum.KeyCode, waypointIndex = number or nil, slotId = number}
-local listeningForKey = nil -- which slot is listening
-local keybindSettingsOpen = {} -- track which keybind settings are open
+local MIN_HEIGHT = 340
+local MAX_WIDTH = 560
+local MAX_HEIGHT = 580
 
 -- ============================================
 -- CLEAN UP
 -- ============================================
 if player.PlayerGui:FindFirstChild("ProximityBypassGUI") then
-	player.PlayerGui:FindFirstChild("ProximityBypassGUI"):Destroy()
+    player.PlayerGui:FindFirstChild("ProximityBypassGUI"):Destroy()
 end
 
 local screenGui = Instance.new("ScreenGui")
@@ -41,74 +41,46 @@ screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screenGui.Parent = player.PlayerGui
 
 -- ============================================
--- OUTER GLOW CONTAINER
+-- OUTER GLOW
 -- ============================================
 local outerGlow = Instance.new("Frame")
 outerGlow.Name = "OuterGlow"
-outerGlow.Size = UDim2.new(0, 340, 0, 400)
-outerGlow.Position = UDim2.new(0.5, -170, 0.5, -200)
+outerGlow.Size = UDim2.new(0, 350, 0, 420)
+outerGlow.Position = UDim2.new(0.5, -175, 0.5, -210)
 outerGlow.BackgroundTransparency = 1
 outerGlow.Parent = screenGui
 
-local glowLayer1 = Instance.new("ImageLabel")
-glowLayer1.Size = UDim2.new(1, 50, 1, 50)
-glowLayer1.Position = UDim2.new(0, -25, 0, -25)
-glowLayer1.BackgroundTransparency = 1
-glowLayer1.Image = "rbxassetid://5554236805"
-glowLayer1.ImageColor3 = Color3.fromRGB(100, 60, 200)
-glowLayer1.ImageTransparency = 0.7
-glowLayer1.ScaleType = Enum.ScaleType.Slice
-glowLayer1.SliceCenter = Rect.new(23, 23, 277, 277)
-glowLayer1.ZIndex = -3
-glowLayer1.Parent = outerGlow
+local function makeGlowLayer(size, pos, color, transp, zindex)
+    local g = Instance.new("ImageLabel")
+    g.Size = UDim2.new(1, size, 1, size)
+    g.Position = UDim2.new(0, -size/2, 0, -size/2)
+    g.BackgroundTransparency = 1
+    g.Image = "rbxassetid://5554236805"
+    g.ImageColor3 = color
+    g.ImageTransparency = transp
+    g.ScaleType = Enum.ScaleType.Slice
+    g.SliceCenter = Rect.new(23, 23, 277, 277)
+    g.ZIndex = zindex
+    g.Parent = outerGlow
+    return g
+end
 
-local glowLayer2 = Instance.new("ImageLabel")
-glowLayer2.Size = UDim2.new(1, 30, 1, 30)
-glowLayer2.Position = UDim2.new(0, -15, 0, -15)
-glowLayer2.BackgroundTransparency = 1
-glowLayer2.Image = "rbxassetid://5554236805"
-glowLayer2.ImageColor3 = Color3.fromRGB(120, 70, 230)
-glowLayer2.ImageTransparency = 0.55
-glowLayer2.ScaleType = Enum.ScaleType.Slice
-glowLayer2.SliceCenter = Rect.new(23, 23, 277, 277)
-glowLayer2.ZIndex = -2
-glowLayer2.Parent = outerGlow
-
-local glowLayer3 = Instance.new("ImageLabel")
-glowLayer3.Size = UDim2.new(1, 70, 1, 70)
-glowLayer3.Position = UDim2.new(0, -35, 0, -35)
-glowLayer3.BackgroundTransparency = 1
-glowLayer3.Image = "rbxassetid://5554236805"
-glowLayer3.ImageColor3 = Color3.fromRGB(80, 40, 180)
-glowLayer3.ImageTransparency = 0.85
-glowLayer3.ScaleType = Enum.ScaleType.Slice
-glowLayer3.SliceCenter = Rect.new(23, 23, 277, 277)
-glowLayer3.ZIndex = -4
-glowLayer3.Parent = outerGlow
-
-local shadow = Instance.new("ImageLabel")
-shadow.Size = UDim2.new(1, 60, 1, 60)
+local glowLayer1 = makeGlowLayer(50, nil, Color3.fromRGB(100, 60, 200), 0.7, -3)
+local glowLayer2 = makeGlowLayer(30, nil, Color3.fromRGB(120, 70, 230), 0.55, -2)
+local glowLayer3 = makeGlowLayer(70, nil, Color3.fromRGB(80, 40, 180), 0.85, -4)
+local shadow = makeGlowLayer(60, nil, Color3.fromRGB(0, 0, 0), 0.4, -5)
 shadow.Position = UDim2.new(0, -30, 0, -20)
-shadow.BackgroundTransparency = 1
-shadow.Image = "rbxassetid://5554236805"
-shadow.ImageColor3 = Color3.fromRGB(0, 0, 0)
-shadow.ImageTransparency = 0.4
-shadow.ScaleType = Enum.ScaleType.Slice
-shadow.SliceCenter = Rect.new(23, 23, 277, 277)
-shadow.ZIndex = -5
-shadow.Parent = outerGlow
 
+-- Main Frame
 local mainFrame = Instance.new("Frame")
 mainFrame.Name = "MainFrame"
 mainFrame.Size = UDim2.new(1, 0, 1, 0)
-mainFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 28)
+mainFrame.BackgroundColor3 = Color3.fromRGB(12, 10, 22)
 mainFrame.BorderSizePixel = 0
 mainFrame.ClipsDescendants = true
 mainFrame.Parent = outerGlow
 
-local mainCorner = Instance.new("UICorner")
-mainCorner.CornerRadius = UDim.new(0, 14)
-mainCorner.Parent = mainFrame
+Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 14)
 
 local mainStroke = Instance.new("UIStroke")
 mainStroke.Color = Color3.fromRGB(120, 80, 220)
@@ -121,10 +93,7 @@ innerFrame.Size = UDim2.new(1, -6, 1, -6)
 innerFrame.Position = UDim2.new(0, 3, 0, 3)
 innerFrame.BackgroundTransparency = 1
 innerFrame.Parent = mainFrame
-
-local innerCorner = Instance.new("UICorner")
-innerCorner.CornerRadius = UDim.new(0, 12)
-innerCorner.Parent = innerFrame
+Instance.new("UICorner", innerFrame).CornerRadius = UDim.new(0, 12)
 
 local innerStroke = Instance.new("UIStroke")
 innerStroke.Color = Color3.fromRGB(80, 50, 160)
@@ -133,57 +102,193 @@ innerStroke.Transparency = 0.5
 innerStroke.Parent = innerFrame
 
 -- ============================================
--- PARTICLE SYSTEM
+-- COSMIC BACKGROUND SYSTEM
 -- ============================================
-local particleContainer = Instance.new("Frame")
-particleContainer.Size = UDim2.new(1, 0, 1, 0)
-particleContainer.BackgroundTransparency = 1
-particleContainer.ClipsDescendants = true
-particleContainer.ZIndex = 0
-particleContainer.Parent = mainFrame
+local cosmicContainer = Instance.new("Frame")
+cosmicContainer.Name = "CosmicBG"
+cosmicContainer.Size = UDim2.new(1, 0, 1, 0)
+cosmicContainer.BackgroundTransparency = 1
+cosmicContainer.ClipsDescendants = true
+cosmicContainer.ZIndex = 0
+cosmicContainer.Parent = mainFrame
+Instance.new("UICorner", cosmicContainer).CornerRadius = UDim.new(0, 14)
 
-local particleContainerCorner = Instance.new("UICorner")
-particleContainerCorner.CornerRadius = UDim.new(0, 14)
-particleContainerCorner.Parent = particleContainer
-
-local activeParticles = {}
-
-local function spawnParticle()
-	local p = Instance.new("Frame")
-	local s = math.random(2, 5)
-	p.Size = UDim2.new(0, s, 0, s)
-	p.Position = UDim2.new(math.random() * 0.9 + 0.05, 0, 1.05, 0)
-	p.BackgroundColor3 = Color3.fromHSV(0.72 + math.random() * 0.12, 0.5 + math.random() * 0.3, 0.6 + math.random() * 0.4)
-	p.BackgroundTransparency = 0.5 + math.random() * 0.3
-	p.BorderSizePixel = 0
-	p.ZIndex = 0
-	p.Parent = particleContainer
-	local pc = Instance.new("UICorner")
-	pc.CornerRadius = UDim.new(1, 0)
-	pc.Parent = p
-	local dur = 3 + math.random() * 4
-	local xd = (math.random() - 0.5) * 0.15
-	local mt = TweenService:Create(p, TweenInfo.new(dur, Enum.EasingStyle.Linear), {
-		Position = UDim2.new(p.Position.X.Scale + xd, 0, -0.1, 0),
-		BackgroundTransparency = 1,
-		Size = UDim2.new(0, s * 0.3, 0, s * 0.3)
-	})
-	mt:Play()
-	mt.Completed:Connect(function() p:Destroy() end)
-	table.insert(activeParticles, p)
-	if #activeParticles > 15 then
-		local old = table.remove(activeParticles, 1)
-		if old and old.Parent then old:Destroy() end
-	end
+-- Nebula layers (large soft colored blobs)
+local function createNebula(color, size, posX, posY, transp)
+    local nebula = Instance.new("Frame")
+    nebula.Size = UDim2.new(0, size, 0, size)
+    nebula.Position = UDim2.new(posX, -size/2, posY, -size/2)
+    nebula.BackgroundColor3 = color
+    nebula.BackgroundTransparency = transp
+    nebula.BorderSizePixel = 0
+    nebula.ZIndex = 0
+    nebula.Parent = cosmicContainer
+    Instance.new("UICorner", nebula).CornerRadius = UDim.new(1, 0)
+    return nebula
 end
 
-local particleTimer = 0
-local particleConnection = RunService.Heartbeat:Connect(function(dt)
-	particleTimer = particleTimer + dt
-	if particleTimer >= 0.6 then
-		particleTimer = 0
-		if not minimized then spawnParticle() end
-	end
+local nebula1 = createNebula(Color3.fromRGB(60, 20, 120), 180, 0.15, 0.3, 0.88)
+local nebula2 = createNebula(Color3.fromRGB(20, 40, 130), 150, 0.75, 0.6, 0.9)
+local nebula3 = createNebula(Color3.fromRGB(100, 30, 80), 120, 0.5, 0.8, 0.92)
+local nebula4 = createNebula(Color3.fromRGB(30, 60, 140), 200, 0.85, 0.15, 0.91)
+local nebula5 = createNebula(Color3.fromRGB(80, 20, 100), 100, 0.3, 0.1, 0.93)
+
+-- Stars
+local stars = {}
+local function createStar()
+    local star = Instance.new("Frame")
+    local s = math.random(1, 3)
+    star.Size = UDim2.new(0, s, 0, s)
+    star.Position = UDim2.new(math.random() * 0.95 + 0.025, 0, math.random() * 0.95 + 0.025, 0)
+    star.BackgroundColor3 = Color3.fromRGB(
+        200 + math.random(55),
+        200 + math.random(55),
+        220 + math.random(35)
+    )
+    star.BackgroundTransparency = math.random() * 0.5 + 0.3
+    star.BorderSizePixel = 0
+    star.ZIndex = 0
+    star.Parent = cosmicContainer
+    Instance.new("UICorner", star).CornerRadius = UDim.new(1, 0)
+    table.insert(stars, {
+        frame = star,
+        baseTransp = star.BackgroundTransparency,
+        twinkleSpeed = 1 + math.random() * 3,
+        twinkleOffset = math.random() * math.pi * 2
+    })
+    return star
+end
+
+-- Create initial stars
+for _ = 1, 40 do
+    createStar()
+end
+
+-- Shooting stars
+local function createShootingStar()
+    local shootStar = Instance.new("Frame")
+    local startX = math.random() * 0.6 + 0.2
+    local startY = math.random() * 0.3
+    shootStar.Size = UDim2.new(0, 0, 0, 1)
+    shootStar.Position = UDim2.new(startX, 0, startY, 0)
+    shootStar.BackgroundColor3 = Color3.fromRGB(200, 180, 255)
+    shootStar.BackgroundTransparency = 0.3
+    shootStar.BorderSizePixel = 0
+    shootStar.Rotation = 35
+    shootStar.ZIndex = 1
+    shootStar.Parent = cosmicContainer
+    Instance.new("UICorner", shootStar).CornerRadius = UDim.new(1, 0)
+
+    -- Trail
+    TweenService:Create(shootStar, TweenInfo.new(0.15, Enum.EasingStyle.Linear), {
+        Size = UDim2.new(0, 30, 0, 2)
+    }):Play()
+
+    task.wait(0.15)
+
+    TweenService:Create(shootStar, TweenInfo.new(0.5, Enum.EasingStyle.Quint), {
+        Position = UDim2.new(startX + 0.3, 0, startY + 0.25, 0),
+        Size = UDim2.new(0, 2, 0, 1),
+        BackgroundTransparency = 1
+    }):Play()
+
+    task.delay(0.6, function() shootStar:Destroy() end)
+end
+
+-- Floating particles (cosmic dust)
+local cosmicParticles = {}
+local function spawnCosmicParticle()
+    local p = Instance.new("Frame")
+    local s = math.random(2, 4)
+    p.Size = UDim2.new(0, s, 0, s)
+    p.Position = UDim2.new(math.random() * 0.9 + 0.05, 0, 1.05, 0)
+    p.BackgroundColor3 = Color3.fromHSV(
+        0.65 + math.random() * 0.2,
+        0.4 + math.random() * 0.3,
+        0.5 + math.random() * 0.5
+    )
+    p.BackgroundTransparency = 0.4 + math.random() * 0.3
+    p.BorderSizePixel = 0
+    p.ZIndex = 1
+    p.Parent = cosmicContainer
+    Instance.new("UICorner", p).CornerRadius = UDim.new(1, 0)
+
+    local dur = 4 + math.random() * 5
+    local xd = (math.random() - 0.5) * 0.2
+
+    TweenService:Create(p, TweenInfo.new(dur, Enum.EasingStyle.Linear), {
+        Position = UDim2.new(p.Position.X.Scale + xd, 0, -0.1, 0),
+        BackgroundTransparency = 1,
+        Size = UDim2.new(0, 1, 0, 1)
+    }):Play()
+
+    task.delay(dur, function() p:Destroy() end)
+    table.insert(cosmicParticles, p)
+    if #cosmicParticles > 20 then
+        local old = table.remove(cosmicParticles, 1)
+        if old and old.Parent then old:Destroy() end
+    end
+end
+
+-- Cosmic animation loop
+local cosmicTimer = 0
+local shootingStarTimer = 0
+local nebulaTime = 0
+
+local cosmicConnection = RunService.Heartbeat:Connect(function(dt)
+    if minimized then return end
+
+    cosmicTimer = cosmicTimer + dt
+    shootingStarTimer = shootingStarTimer + dt
+    nebulaTime = nebulaTime + dt
+
+    -- Twinkle stars
+    for _, starData in ipairs(stars) do
+        if starData.frame and starData.frame.Parent then
+            local t = math.sin(cosmicTimer * starData.twinkleSpeed + starData.twinkleOffset)
+            starData.frame.BackgroundTransparency = starData.baseTransp + t * 0.25
+        end
+    end
+
+    -- Float nebulae slowly
+    if nebula1 and nebula1.Parent then
+        local nx = 0.15 + math.sin(nebulaTime * 0.1) * 0.05
+        local ny = 0.3 + math.cos(nebulaTime * 0.08) * 0.04
+        nebula1.Position = UDim2.new(nx, -90, ny, -90)
+    end
+    if nebula2 and nebula2.Parent then
+        local nx = 0.75 + math.cos(nebulaTime * 0.12) * 0.04
+        local ny = 0.6 + math.sin(nebulaTime * 0.09) * 0.05
+        nebula2.Position = UDim2.new(nx, -75, ny, -75)
+    end
+    if nebula3 and nebula3.Parent then
+        local nx = 0.5 + math.sin(nebulaTime * 0.07 + 1) * 0.06
+        local ny = 0.8 + math.cos(nebulaTime * 0.11) * 0.03
+        nebula3.Position = UDim2.new(nx, -60, ny, -60)
+    end
+    if nebula4 and nebula4.Parent then
+        local nx = 0.85 + math.cos(nebulaTime * 0.09 + 2) * 0.04
+        local ny = 0.15 + math.sin(nebulaTime * 0.06) * 0.05
+        nebula4.Position = UDim2.new(nx, -100, ny, -100)
+    end
+
+    -- Nebula color breathing
+    local hShift = math.sin(nebulaTime * 0.15) * 0.03
+    nebula1.BackgroundColor3 = Color3.fromHSV((0.75 + hShift) % 1, 0.7, 0.45)
+    nebula2.BackgroundColor3 = Color3.fromHSV((0.62 + hShift) % 1, 0.6, 0.5)
+    nebula3.BackgroundColor3 = Color3.fromHSV((0.85 + hShift) % 1, 0.65, 0.35)
+
+    -- Spawn cosmic particles
+    if cosmicTimer >= 0.5 then
+        cosmicTimer = 0
+        spawnCosmicParticle()
+    end
+
+    -- Shooting stars (random interval)
+    if shootingStarTimer >= 4 + math.random() * 6 then
+        shootingStarTimer = 0
+        createShootingStar()
+    end
 end)
 
 -- ============================================
@@ -193,83 +298,79 @@ local outlineHue = 0
 local breathTimer = 0
 
 local outlineConnection = RunService.Heartbeat:Connect(function(dt)
-	outlineHue = (outlineHue + dt * 0.08) % 1
-	breathTimer = breathTimer + dt
-	local h1 = (0.72 + math.sin(outlineHue * math.pi * 2) * 0.08) % 1
-	local color1 = Color3.fromHSV(h1, 0.6, 0.85)
-	mainStroke.Color = color1
-	local h2 = (0.72 + math.sin((outlineHue + 0.3) * math.pi * 2) * 0.08) % 1
-	innerStroke.Color = Color3.fromHSV(h2, 0.5, 0.55)
-	local p1 = 0.6 + math.sin(breathTimer * 1.2) * 0.15
-	local p2 = 0.5 + math.sin(breathTimer * 1.5 + 0.5) * 0.12
-	local p3 = 0.78 + math.sin(breathTimer * 0.8 + 1) * 0.1
-	glowLayer1.ImageTransparency = p1
-	glowLayer2.ImageTransparency = p2
-	glowLayer3.ImageTransparency = p3
-	glowLayer1.ImageColor3 = Color3.fromHSV(h1, 0.7, 0.75)
-	glowLayer2.ImageColor3 = color1
-	glowLayer3.ImageColor3 = Color3.fromHSV(h2, 0.6, 0.5)
-	mainStroke.Thickness = 2 + math.sin(breathTimer * 1.8) * 0.4
-	local bg = 18 + math.sin(breathTimer * 0.7) * 2
-	mainFrame.BackgroundColor3 = Color3.fromRGB(bg, bg, bg + 10)
+    outlineHue = (outlineHue + dt * 0.08) % 1
+    breathTimer = breathTimer + dt
+    local h1 = (0.72 + math.sin(outlineHue * math.pi * 2) * 0.08) % 1
+    local c1 = Color3.fromHSV(h1, 0.6, 0.85)
+    mainStroke.Color = c1
+    local h2 = (0.72 + math.sin((outlineHue + 0.3) * math.pi * 2) * 0.08) % 1
+    innerStroke.Color = Color3.fromHSV(h2, 0.5, 0.55)
+    glowLayer1.ImageTransparency = 0.6 + math.sin(breathTimer * 1.2) * 0.15
+    glowLayer2.ImageTransparency = 0.5 + math.sin(breathTimer * 1.5 + 0.5) * 0.12
+    glowLayer3.ImageTransparency = 0.78 + math.sin(breathTimer * 0.8 + 1) * 0.1
+    glowLayer1.ImageColor3 = Color3.fromHSV(h1, 0.7, 0.75)
+    glowLayer2.ImageColor3 = c1
+    glowLayer3.ImageColor3 = Color3.fromHSV(h2, 0.6, 0.5)
+    mainStroke.Thickness = 2 + math.sin(breathTimer * 1.8) * 0.4
+    local bg = 12 + math.sin(breathTimer * 0.7) * 2
+    mainFrame.BackgroundColor3 = Color3.fromRGB(bg, bg - 2, bg + 10)
 end)
 
 -- ============================================
 -- RIPPLE
 -- ============================================
-local function createRipple(parent, inputPosition)
-	local ripple = Instance.new("Frame")
-	ripple.BackgroundColor3 = Color3.fromRGB(150, 120, 255)
-	ripple.BackgroundTransparency = 0.6
-	ripple.BorderSizePixel = 0
-	ripple.ZIndex = 99
-	local ps = parent.AbsoluteSize
-	local pp = parent.AbsolutePosition
-	local rx = inputPosition and (inputPosition.X - pp.X) or (ps.X / 2)
-	local ry = inputPosition and (inputPosition.Y - pp.Y) or (ps.Y / 2)
-	ripple.Position = UDim2.new(0, rx, 0, ry)
-	ripple.Size = UDim2.new(0, 0, 0, 0)
-	ripple.AnchorPoint = Vector2.new(0.5, 0.5)
-	ripple.Parent = parent
-	local rc = Instance.new("UICorner")
-	rc.CornerRadius = UDim.new(1, 0)
-	rc.Parent = ripple
-	local ms = math.max(ps.X, ps.Y) * 2.5
-	TweenService:Create(ripple, TweenInfo.new(0.6, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-		Size = UDim2.new(0, ms, 0, ms),
-		BackgroundTransparency = 1
-	}):Play()
-	task.delay(0.6, function() ripple:Destroy() end)
+local function createRipple(parent)
+    if not parent or not parent.Parent then return end
+    local ripple = Instance.new("Frame")
+    ripple.BackgroundColor3 = Color3.fromRGB(150, 120, 255)
+    ripple.BackgroundTransparency = 0.6
+    ripple.BorderSizePixel = 0
+    ripple.ZIndex = 99
+    local ps = parent.AbsoluteSize
+    ripple.Position = UDim2.new(0.5, 0, 0.5, 0)
+    ripple.Size = UDim2.new(0, 0, 0, 0)
+    ripple.AnchorPoint = Vector2.new(0.5, 0.5)
+    ripple.Parent = parent
+    Instance.new("UICorner", ripple).CornerRadius = UDim.new(1, 0)
+    local ms = math.max(ps.X, ps.Y) * 2.5
+    TweenService:Create(ripple, TweenInfo.new(0.6, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+        Size = UDim2.new(0, ms, 0, ms), BackgroundTransparency = 1
+    }):Play()
+    task.delay(0.6, function() if ripple.Parent then ripple:Destroy() end end)
 end
+
+-- ============================================
+-- TWEEN HELPERS
+-- ============================================
+local tweenInfo = TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+local tweenFast = TweenInfo.new(0.15, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 
 -- ============================================
 -- TOP BAR
 -- ============================================
 local topBar = Instance.new("Frame")
-topBar.Name = "TopBar"
 topBar.Size = UDim2.new(1, 0, 0, 42)
-topBar.BackgroundColor3 = Color3.fromRGB(28, 24, 45)
+topBar.BackgroundColor3 = Color3.fromRGB(20, 16, 38)
 topBar.BorderSizePixel = 0
+topBar.ZIndex = 5
 topBar.Parent = mainFrame
-
-local topBarCorner = Instance.new("UICorner")
-topBarCorner.CornerRadius = UDim.new(0, 14)
-topBarCorner.Parent = topBar
+Instance.new("UICorner", topBar).CornerRadius = UDim.new(0, 14)
 
 local topBarCover = Instance.new("Frame")
 topBarCover.Size = UDim2.new(1, 0, 0, 16)
 topBarCover.Position = UDim2.new(0, 0, 1, -16)
-topBarCover.BackgroundColor3 = Color3.fromRGB(28, 24, 45)
+topBarCover.BackgroundColor3 = Color3.fromRGB(20, 16, 38)
 topBarCover.BorderSizePixel = 0
+topBarCover.ZIndex = 5
 topBarCover.Parent = topBar
 
-local topBarGradient = Instance.new("UIGradient")
-topBarGradient.Color = ColorSequence.new({
-	ColorSequenceKeypoint.new(0, Color3.fromRGB(40, 30, 65)),
-	ColorSequenceKeypoint.new(1, Color3.fromRGB(25, 22, 40))
+local topBarGrad = Instance.new("UIGradient")
+topBarGrad.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(35, 25, 60)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(18, 14, 35))
 })
-topBarGradient.Rotation = 90
-topBarGradient.Parent = topBar
+topBarGrad.Rotation = 90
+topBarGrad.Parent = topBar
 
 local topBarLine = Instance.new("Frame")
 topBarLine.Size = UDim2.new(0, 0, 0, 2)
@@ -277,27 +378,24 @@ topBarLine.Position = UDim2.new(0.5, 0, 1, -2)
 topBarLine.BackgroundColor3 = Color3.fromRGB(120, 80, 220)
 topBarLine.BackgroundTransparency = 0.3
 topBarLine.BorderSizePixel = 0
-topBarLine.ZIndex = 2
+topBarLine.ZIndex = 6
 topBarLine.Parent = topBar
+Instance.new("UICorner", topBarLine).CornerRadius = UDim.new(1, 0)
 
-local lineCorner = Instance.new("UICorner")
-lineCorner.CornerRadius = UDim.new(1, 0)
-lineCorner.Parent = topBarLine
-
-local lineGradient = Instance.new("UIGradient")
-lineGradient.Color = ColorSequence.new({
-	ColorSequenceKeypoint.new(0, Color3.fromRGB(40, 20, 80)),
-	ColorSequenceKeypoint.new(0.3, Color3.fromRGB(180, 120, 255)),
-	ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 200, 255)),
-	ColorSequenceKeypoint.new(0.7, Color3.fromRGB(180, 120, 255)),
-	ColorSequenceKeypoint.new(1, Color3.fromRGB(40, 20, 80))
+local lineGrad = Instance.new("UIGradient")
+lineGrad.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(40, 20, 80)),
+    ColorSequenceKeypoint.new(0.3, Color3.fromRGB(180, 120, 255)),
+    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 200, 255)),
+    ColorSequenceKeypoint.new(0.7, Color3.fromRGB(180, 120, 255)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(40, 20, 80))
 })
-lineGradient.Parent = topBarLine
+lineGrad.Parent = topBarLine
 
-local lineOffset = 0
+local lineOff = 0
 RunService.Heartbeat:Connect(function(dt)
-	lineOffset = (lineOffset + dt * 0.4) % 2
-	lineGradient.Offset = Vector2.new(lineOffset - 0.5, 0)
+    lineOff = (lineOff + dt * 0.4) % 2
+    lineGrad.Offset = Vector2.new(lineOff - 0.5, 0)
 end)
 
 local titleIcon = Instance.new("TextLabel")
@@ -308,6 +406,7 @@ titleIcon.Text = "⚡"
 titleIcon.TextSize = 18
 titleIcon.Font = Enum.Font.GothamBold
 titleIcon.TextColor3 = Color3.fromRGB(180, 130, 255)
+titleIcon.ZIndex = 6
 titleIcon.Parent = topBar
 
 local titleText = Instance.new("TextLabel")
@@ -319,23 +418,22 @@ titleText.TextColor3 = Color3.fromRGB(230, 225, 250)
 titleText.TextSize = 15
 titleText.Font = Enum.Font.GothamBold
 titleText.TextXAlignment = Enum.TextXAlignment.Left
+titleText.ZIndex = 6
 titleText.Parent = topBar
 
 local versionTag = Instance.new("TextLabel")
 versionTag.Size = UDim2.new(0, 32, 0, 14)
 versionTag.Position = UDim2.new(0, 158, 0.5, -7)
-versionTag.BackgroundColor3 = Color3.fromRGB(60, 45, 110)
+versionTag.BackgroundColor3 = Color3.fromRGB(50, 35, 100)
 versionTag.BackgroundTransparency = 1
 versionTag.Text = "v3"
 versionTag.TextColor3 = Color3.fromRGB(160, 140, 220)
 versionTag.TextTransparency = 1
 versionTag.TextSize = 9
 versionTag.Font = Enum.Font.GothamBold
+versionTag.ZIndex = 6
 versionTag.Parent = topBar
-
-local versionCorner = Instance.new("UICorner")
-versionCorner.CornerRadius = UDim.new(0, 4)
-versionCorner.Parent = versionTag
+Instance.new("UICorner", versionTag).CornerRadius = UDim.new(0, 4)
 
 local versionStroke = Instance.new("UIStroke")
 versionStroke.Color = Color3.fromRGB(90, 70, 160)
@@ -343,45 +441,31 @@ versionStroke.Thickness = 1
 versionStroke.Transparency = 1
 versionStroke.Parent = versionTag
 
-local minimizeBtn = Instance.new("TextButton")
-minimizeBtn.Size = UDim2.new(0, 28, 0, 28)
-minimizeBtn.Position = UDim2.new(1, -68, 0.5, -14)
-minimizeBtn.BackgroundColor3 = Color3.fromRGB(200, 170, 50)
-minimizeBtn.BackgroundTransparency = 0.5
-minimizeBtn.Text = "−"
-minimizeBtn.TextColor3 = Color3.fromRGB(240, 230, 180)
-minimizeBtn.TextSize = 18
-minimizeBtn.Font = Enum.Font.GothamBold
-minimizeBtn.BorderSizePixel = 0
-minimizeBtn.AutoButtonColor = false
-minimizeBtn.Parent = topBar
+local function makeTopBtn(pos, color, text, textColor)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0, 28, 0, 28)
+    btn.Position = UDim2.new(1, pos, 0.5, -14)
+    btn.BackgroundColor3 = color
+    btn.BackgroundTransparency = 0.5
+    btn.Text = text
+    btn.TextColor3 = textColor
+    btn.TextSize = text == "✕" and 13 or 18
+    btn.Font = Enum.Font.GothamBold
+    btn.BorderSizePixel = 0
+    btn.AutoButtonColor = false
+    btn.ZIndex = 6
+    btn.Parent = topBar
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(1, 0)
+    local s = Instance.new("UIStroke")
+    s.Color = color
+    s.Thickness = 1
+    s.Transparency = 0.5
+    s.Parent = btn
+    return btn, s
+end
 
-Instance.new("UICorner", minimizeBtn).CornerRadius = UDim.new(1, 0)
-local minimizeBtnStroke = Instance.new("UIStroke")
-minimizeBtnStroke.Color = Color3.fromRGB(220, 190, 60)
-minimizeBtnStroke.Thickness = 1
-minimizeBtnStroke.Transparency = 0.6
-minimizeBtnStroke.Parent = minimizeBtn
-
-local closeBtn = Instance.new("TextButton")
-closeBtn.Size = UDim2.new(0, 28, 0, 28)
-closeBtn.Position = UDim2.new(1, -35, 0.5, -14)
-closeBtn.BackgroundColor3 = Color3.fromRGB(200, 55, 55)
-closeBtn.BackgroundTransparency = 0.5
-closeBtn.Text = "✕"
-closeBtn.TextColor3 = Color3.fromRGB(230, 180, 180)
-closeBtn.TextSize = 13
-closeBtn.Font = Enum.Font.GothamBold
-closeBtn.BorderSizePixel = 0
-closeBtn.AutoButtonColor = false
-closeBtn.Parent = topBar
-
-Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(1, 0)
-local closeBtnStroke = Instance.new("UIStroke")
-closeBtnStroke.Color = Color3.fromRGB(230, 70, 70)
-closeBtnStroke.Thickness = 1
-closeBtnStroke.Transparency = 0.6
-closeBtnStroke.Parent = closeBtn
+local minimizeBtn, minimizeBtnStroke = makeTopBtn(-68, Color3.fromRGB(200, 170, 50), "−", Color3.fromRGB(240, 230, 180))
+local closeBtn, closeBtnStroke = makeTopBtn(-35, Color3.fromRGB(200, 55, 55), "✕", Color3.fromRGB(230, 180, 180))
 
 -- ============================================
 -- RESIZE HANDLE
@@ -395,94 +479,72 @@ resizeHandle.ZIndex = 10
 resizeHandle.AutoButtonColor = false
 resizeHandle.Parent = mainFrame
 
-local grips = {}
+local gripFrames = {}
 for i = 1, 3 do
-	local g = Instance.new("Frame")
-	g.Size = UDim2.new(0, 16 - (i-1)*5, 0, 2)
-	g.Position = UDim2.new(0, 5+(i-1)*5, 0, 11+(i-1)*3)
-	g.Rotation = -45
-	g.BackgroundColor3 = Color3.fromRGB(120, 90, 200)
-	g.BackgroundTransparency = 0.2
-	g.BorderSizePixel = 0
-	g.ZIndex = 10
-	g.Parent = resizeHandle
-	Instance.new("UICorner", g).CornerRadius = UDim.new(1, 0)
-	table.insert(grips, g)
+    local g = Instance.new("Frame")
+    g.Size = UDim2.new(0, 16-(i-1)*5, 0, 2)
+    g.Position = UDim2.new(0, 5+(i-1)*5, 0, 11+(i-1)*3)
+    g.Rotation = -45
+    g.BackgroundColor3 = Color3.fromRGB(120, 90, 200)
+    g.BackgroundTransparency = 0.2
+    g.BorderSizePixel = 0
+    g.ZIndex = 10
+    g.Parent = resizeHandle
+    Instance.new("UICorner", g).CornerRadius = UDim.new(1, 0)
+    table.insert(gripFrames, g)
 end
 
 -- ============================================
--- DRAGGING
+-- DRAGGING + RESIZING
 -- ============================================
 local dragging, dragStart, startPos = false, nil, nil
-
-topBar.InputBegan:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-		dragging = true
-		dragStart = input.Position
-		startPos = outerGlow.Position
-	end
-end)
-topBar.InputEnded:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-		dragging = false
-	end
-end)
-
--- ============================================
--- RESIZING
--- ============================================
 local resizingActive, resizeStart, startSize = false, nil, nil
 
+topBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true; dragStart = input.Position; startPos = outerGlow.Position
+    end
+end)
+topBar.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
+    end
+end)
+
 resizeHandle.InputBegan:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-		resizingActive = true
-		resizeStart = input.Position
-		startSize = outerGlow.AbsoluteSize
-	end
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        resizingActive = true; resizeStart = input.Position; startSize = outerGlow.AbsoluteSize
+    end
 end)
 resizeHandle.InputEnded:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-		resizingActive = false
-	end
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        resizingActive = false
+    end
 end)
 
 UserInputService.InputChanged:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-		if dragging and dragStart then
-			local d = input.Position - dragStart
-			outerGlow.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
-		elseif resizingActive and resizeStart and not minimized then
-			local d = input.Position - resizeStart
-			local nw = math.clamp(startSize.X + d.X, MIN_WIDTH, MAX_WIDTH)
-			local nh = math.clamp(startSize.Y + d.Y, MIN_HEIGHT, MAX_HEIGHT)
-			outerGlow.Size = UDim2.new(0, nw, 0, nh)
-		end
-	end
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        if dragging and dragStart then
+            local d = input.Position - dragStart
+            outerGlow.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+        elseif resizingActive and resizeStart and not minimized then
+            local d = input.Position - resizeStart
+            outerGlow.Size = UDim2.new(0, math.clamp(startSize.X + d.X, MIN_WIDTH, MAX_WIDTH), 0, math.clamp(startSize.Y + d.Y, MIN_HEIGHT, MAX_HEIGHT))
+        end
+    end
 end)
-
 UserInputService.InputEnded:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-		dragging = false
-		resizingActive = false
-	end
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = false; resizingActive = false
+    end
 end)
 
 resizeHandle.MouseEnter:Connect(function()
-	for _, g in ipairs(grips) do
-		TweenService:Create(g, TweenInfo.new(0.2), {BackgroundTransparency = 0, BackgroundColor3 = Color3.fromRGB(190, 160, 255)}):Play()
-	end
+    for _, g in ipairs(gripFrames) do TweenService:Create(g, TweenInfo.new(0.2), {BackgroundTransparency = 0, BackgroundColor3 = Color3.fromRGB(190, 160, 255)}):Play() end
 end)
 resizeHandle.MouseLeave:Connect(function()
-	for _, g in ipairs(grips) do
-		TweenService:Create(g, TweenInfo.new(0.2), {BackgroundTransparency = 0.2, BackgroundColor3 = Color3.fromRGB(120, 90, 200)}):Play()
-	end
+    for _, g in ipairs(gripFrames) do TweenService:Create(g, TweenInfo.new(0.2), {BackgroundTransparency = 0.2, BackgroundColor3 = Color3.fromRGB(120, 90, 200)}):Play() end
 end)
-
--- ============================================
--- TWEEN HELPERS
--- ============================================
-local tweenInfo = TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
-local tweenFast = TweenInfo.new(0.15, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 
 -- ============================================
 -- TAB BAR (3 TABS)
@@ -490,14 +552,14 @@ local tweenFast = TweenInfo.new(0.15, Enum.EasingStyle.Quint, Enum.EasingDirecti
 local tabBar = Instance.new("Frame")
 tabBar.Size = UDim2.new(1, -20, 0, 36)
 tabBar.Position = UDim2.new(0, 10, 0, 50)
-tabBar.BackgroundColor3 = Color3.fromRGB(22, 22, 34)
+tabBar.BackgroundColor3 = Color3.fromRGB(16, 14, 30)
 tabBar.BorderSizePixel = 0
+tabBar.ZIndex = 5
 tabBar.Parent = mainFrame
-
 Instance.new("UICorner", tabBar).CornerRadius = UDim.new(0, 10)
 
 local tabBarStroke = Instance.new("UIStroke")
-tabBarStroke.Color = Color3.fromRGB(55, 45, 85)
+tabBarStroke.Color = Color3.fromRGB(50, 40, 80)
 tabBarStroke.Thickness = 1
 tabBarStroke.Transparency = 0.3
 tabBarStroke.Parent = tabBar
@@ -505,26 +567,25 @@ tabBarStroke.Parent = tabBar
 local tabHighlight = Instance.new("Frame")
 tabHighlight.Size = UDim2.new(1/3, -5, 0, 30)
 tabHighlight.Position = UDim2.new(0, 3, 0.5, -15)
-tabHighlight.BackgroundColor3 = Color3.fromRGB(70, 45, 140)
+tabHighlight.BackgroundColor3 = Color3.fromRGB(60, 35, 130)
 tabHighlight.BorderSizePixel = 0
-tabHighlight.ZIndex = 2
+tabHighlight.ZIndex = 6
 tabHighlight.Parent = tabBar
-
 Instance.new("UICorner", tabHighlight).CornerRadius = UDim.new(0, 8)
 
-local tabHighlightGradient = Instance.new("UIGradient")
-tabHighlightGradient.Color = ColorSequence.new({
-	ColorSequenceKeypoint.new(0, Color3.fromRGB(90, 55, 170)),
-	ColorSequenceKeypoint.new(1, Color3.fromRGB(60, 35, 130))
+local thGrad = Instance.new("UIGradient")
+thGrad.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(80, 50, 160)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(50, 30, 120))
 })
-tabHighlightGradient.Rotation = 90
-tabHighlightGradient.Parent = tabHighlight
+thGrad.Rotation = 90
+thGrad.Parent = tabHighlight
 
-local tabHighlightStroke = Instance.new("UIStroke")
-tabHighlightStroke.Color = Color3.fromRGB(130, 90, 220)
-tabHighlightStroke.Thickness = 1
-tabHighlightStroke.Transparency = 0.4
-tabHighlightStroke.Parent = tabHighlight
+local thStroke = Instance.new("UIStroke")
+thStroke.Color = Color3.fromRGB(120, 80, 210)
+thStroke.Thickness = 1
+thStroke.Transparency = 0.4
+thStroke.Parent = tabHighlight
 
 local tabIndicator = Instance.new("Frame")
 tabIndicator.Size = UDim2.new(0, 20, 0, 3)
@@ -532,103 +593,85 @@ tabIndicator.Position = UDim2.new(1/6, -10, 1, 3)
 tabIndicator.BackgroundColor3 = Color3.fromRGB(150, 110, 255)
 tabIndicator.BackgroundTransparency = 0.2
 tabIndicator.BorderSizePixel = 0
-tabIndicator.ZIndex = 5
+tabIndicator.ZIndex = 7
 tabIndicator.Parent = tabBar
-
 Instance.new("UICorner", tabIndicator).CornerRadius = UDim.new(1, 0)
 
-local function makeTabBtn(name, text, pos)
-	local btn = Instance.new("TextButton")
-	btn.Name = name
-	btn.Size = UDim2.new(1/3, 0, 1, 0)
-	btn.Position = UDim2.new(pos, 0, 0, 0)
-	btn.BackgroundTransparency = 1
-	btn.Text = text
-	btn.TextColor3 = pos == 0 and Color3.fromRGB(230, 220, 255) or Color3.fromRGB(140, 140, 160)
-	btn.TextSize = 12
-	btn.Font = pos == 0 and Enum.Font.GothamBold or Enum.Font.GothamMedium
-	btn.ZIndex = 3
-	btn.AutoButtonColor = false
-	btn.Parent = tabBar
-	return btn
+local function makeTabBtn(text, pos)
+    local b = Instance.new("TextButton")
+    b.Size = UDim2.new(1/3, 0, 1, 0)
+    b.Position = UDim2.new(pos, 0, 0, 0)
+    b.BackgroundTransparency = 1
+    b.Text = text
+    b.TextColor3 = pos == 0 and Color3.fromRGB(230, 220, 255) or Color3.fromRGB(130, 125, 155)
+    b.TextSize = 11
+    b.Font = pos == 0 and Enum.Font.GothamBold or Enum.Font.GothamMedium
+    b.ZIndex = 7
+    b.AutoButtonColor = false
+    b.Parent = tabBar
+    return b
 end
 
-local bypassTabBtn = makeTabBtn("BypassTab", "⚡ Bypass", 0)
-local waypointTabBtn = makeTabBtn("WaypointTab", "📍 Waypoint", 1/3)
-local keybindTabBtn = makeTabBtn("KeybindTab", "⌨️ Keybind", 2/3)
+local bypassTabBtn = makeTabBtn("⚡ Bypass", 0)
+local waypointTabBtn = makeTabBtn("📍 Waypoint", 1/3)
+local keybindTabBtn = makeTabBtn("⌨️ Keybind", 2/3)
 
--- ============================================
--- CONTENT FRAMES
--- ============================================
-local function makeContentFrame(name, visible)
-	local f = Instance.new("Frame")
-	f.Name = name
-	f.Size = UDim2.new(1, -20, 1, -100)
-	f.Position = UDim2.new(0, 10, 0, 95)
-	f.BackgroundTransparency = 1
-	f.Visible = visible
-	f.Parent = mainFrame
-	return f
+-- Content frames
+local function makeContent(name, vis)
+    local f = Instance.new("Frame")
+    f.Name = name
+    f.Size = UDim2.new(1, -20, 1, -100)
+    f.Position = UDim2.new(0, 10, 0, 95)
+    f.BackgroundTransparency = 1
+    f.Visible = vis
+    f.ZIndex = 3
+    f.Parent = mainFrame
+    return f
 end
 
-local bypassContent = makeContentFrame("BypassContent", true)
-local waypointContent = makeContentFrame("WaypointContent", false)
-local keybindContent = makeContentFrame("KeybindContent", false)
+local bypassContent = makeContent("Bypass", true)
+local waypointContent = makeContent("Waypoint", false)
+local keybindContent = makeContent("Keybind", false)
 
--- ============================================
--- TAB SWITCHING
--- ============================================
+-- Tab switching
 local tabButtons = {bypassTabBtn, waypointTabBtn, keybindTabBtn}
 local tabContents = {bypassContent, waypointContent, keybindContent}
 local tabNames = {"Bypass", "Waypoint", "Keybind"}
 local tabPositions = {0, 1/3, 2/3}
 
 local function switchTab(tabName)
-	if currentTab == tabName then return end
+    if currentTab == tabName then return end
+    local oi, ni
+    for i, n in ipairs(tabNames) do
+        if n == currentTab then oi = i end
+        if n == tabName then ni = i end
+    end
+    currentTab = tabName
 
-	local oldIndex, newIndex
-	for i, n in ipairs(tabNames) do
-		if n == currentTab then oldIndex = i end
-		if n == tabName then newIndex = i end
-	end
+    TweenService:Create(tabHighlight, tweenInfo, {Position = UDim2.new(tabPositions[ni], 3, 0.5, -15)}):Play()
+    TweenService:Create(tabIndicator, tweenInfo, {Position = UDim2.new(tabPositions[ni] + 1/6, -10, 1, 3)}):Play()
 
-	currentTab = tabName
+    for i, btn in ipairs(tabButtons) do
+        if i == ni then
+            TweenService:Create(btn, tweenFast, {TextColor3 = Color3.fromRGB(230, 220, 255)}):Play()
+            btn.Font = Enum.Font.GothamBold
+        else
+            TweenService:Create(btn, tweenFast, {TextColor3 = Color3.fromRGB(130, 125, 155)}):Play()
+            btn.Font = Enum.Font.GothamMedium
+        end
+    end
 
-	-- Highlight slide
-	TweenService:Create(tabHighlight, tweenInfo, {
-		Position = UDim2.new(tabPositions[newIndex], 3, 0.5, -15)
-	}):Play()
-	TweenService:Create(tabIndicator, tweenInfo, {
-		Position = UDim2.new(tabPositions[newIndex] + (1/6), -10, 1, 3)
-	}):Play()
+    local sd = ni > oi and 1 or -1
+    TweenService:Create(tabContents[oi], TweenInfo.new(0.2, Enum.EasingStyle.Quint), {
+        Position = UDim2.new(-0.3 * sd, 10, 0, 95)
+    }):Play()
+    task.delay(0.15, function() tabContents[oi].Visible = false end)
 
-	-- Update button styles
-	for i, btn in ipairs(tabButtons) do
-		if i == newIndex then
-			TweenService:Create(btn, tweenFast, {TextColor3 = Color3.fromRGB(230, 220, 255)}):Play()
-			btn.Font = Enum.Font.GothamBold
-		else
-			TweenService:Create(btn, tweenFast, {TextColor3 = Color3.fromRGB(140, 140, 160)}):Play()
-			btn.Font = Enum.Font.GothamMedium
-		end
-	end
-
-	local slideDir = newIndex > oldIndex and 1 or -1
-
-	-- Slide out old content
-	local oldContent = tabContents[oldIndex]
-	TweenService:Create(oldContent, TweenInfo.new(0.2, Enum.EasingStyle.Quint), {
-		Position = UDim2.new(-0.3 * slideDir, 10, 0, 95)
-	}):Play()
-	task.delay(0.15, function() oldContent.Visible = false end)
-
-	-- Slide in new content
-	local newContent = tabContents[newIndex]
-	newContent.Position = UDim2.new(0.3 * slideDir, 10, 0, 95)
-	newContent.Visible = true
-	TweenService:Create(newContent, TweenInfo.new(0.3, Enum.EasingStyle.Quint), {
-		Position = UDim2.new(0, 10, 0, 95)
-	}):Play()
+    tabContents[ni].Position = UDim2.new(0.3 * sd, 10, 0, 95)
+    tabContents[ni].Visible = true
+    TweenService:Create(tabContents[ni], TweenInfo.new(0.3, Enum.EasingStyle.Quint), {
+        Position = UDim2.new(0, 10, 0, 95)
+    }):Play()
 end
 
 bypassTabBtn.MouseButton1Click:Connect(function() createRipple(tabBar); switchTab("Bypass") end)
@@ -641,22 +684,24 @@ keybindTabBtn.MouseButton1Click:Connect(function() createRipple(tabBar); switchT
 local toggleContainer = Instance.new("Frame")
 toggleContainer.Size = UDim2.new(1, 0, 0, 54)
 toggleContainer.Position = UDim2.new(0, 0, 0, 5)
-toggleContainer.BackgroundColor3 = Color3.fromRGB(25, 25, 38)
+toggleContainer.BackgroundColor3 = Color3.fromRGB(20, 18, 35)
 toggleContainer.BorderSizePixel = 0
+toggleContainer.ZIndex = 4
 toggleContainer.Parent = bypassContent
-
 Instance.new("UICorner", toggleContainer).CornerRadius = UDim.new(0, 10)
-local toggleContainerStroke = Instance.new("UIStroke")
-toggleContainerStroke.Color = Color3.fromRGB(50, 45, 75)
-toggleContainerStroke.Thickness = 1
-toggleContainerStroke.Transparency = 0.3
-toggleContainerStroke.Parent = toggleContainer
+
+local tcStroke = Instance.new("UIStroke")
+tcStroke.Color = Color3.fromRGB(45, 38, 70)
+tcStroke.Thickness = 1
+tcStroke.Transparency = 0.3
+tcStroke.Parent = toggleContainer
 
 local statusDot = Instance.new("Frame")
 statusDot.Size = UDim2.new(0, 8, 0, 8)
 statusDot.Position = UDim2.new(0, 12, 0.5, -4)
-statusDot.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+statusDot.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
 statusDot.BorderSizePixel = 0
+statusDot.ZIndex = 5
 statusDot.Parent = toggleContainer
 Instance.new("UICorner", statusDot).CornerRadius = UDim.new(1, 0)
 
@@ -665,37 +710,39 @@ toggleLabel.Size = UDim2.new(0.6, 0, 1, 0)
 toggleLabel.Position = UDim2.new(0, 28, 0, 0)
 toggleLabel.BackgroundTransparency = 1
 toggleLabel.Text = "No Hold Duration"
-toggleLabel.TextColor3 = Color3.fromRGB(190, 190, 210)
+toggleLabel.TextColor3 = Color3.fromRGB(180, 175, 205)
 toggleLabel.TextSize = 13
 toggleLabel.Font = Enum.Font.GothamMedium
 toggleLabel.TextXAlignment = Enum.TextXAlignment.Left
+toggleLabel.ZIndex = 5
 toggleLabel.Parent = toggleContainer
 
 local toggleSwitch = Instance.new("TextButton")
 toggleSwitch.Size = UDim2.new(0, 52, 0, 26)
 toggleSwitch.Position = UDim2.new(1, -65, 0.5, -13)
-toggleSwitch.BackgroundColor3 = Color3.fromRGB(55, 55, 70)
+toggleSwitch.BackgroundColor3 = Color3.fromRGB(45, 42, 65)
 toggleSwitch.Text = ""
 toggleSwitch.BorderSizePixel = 0
 toggleSwitch.AutoButtonColor = false
+toggleSwitch.ZIndex = 5
 toggleSwitch.Parent = toggleContainer
-
 Instance.new("UICorner", toggleSwitch).CornerRadius = UDim.new(1, 0)
-local toggleSwitchStroke = Instance.new("UIStroke")
-toggleSwitchStroke.Color = Color3.fromRGB(70, 70, 90)
-toggleSwitchStroke.Thickness = 1
-toggleSwitchStroke.Parent = toggleSwitch
+
+local tsStroke = Instance.new("UIStroke")
+tsStroke.Color = Color3.fromRGB(60, 55, 85)
+tsStroke.Thickness = 1
+tsStroke.Parent = toggleSwitch
 
 local toggleKnob = Instance.new("Frame")
 toggleKnob.Size = UDim2.new(0, 20, 0, 20)
 toggleKnob.Position = UDim2.new(0, 3, 0.5, -10)
-toggleKnob.BackgroundColor3 = Color3.fromRGB(170, 170, 180)
+toggleKnob.BackgroundColor3 = Color3.fromRGB(150, 148, 170)
 toggleKnob.BorderSizePixel = 0
+toggleKnob.ZIndex = 6
 toggleKnob.Parent = toggleSwitch
 Instance.new("UICorner", toggleKnob).CornerRadius = UDim.new(1, 0)
 
 local knobGlow = Instance.new("UIStroke")
-knobGlow.Color = Color3.fromRGB(255, 255, 255)
 knobGlow.Thickness = 0
 knobGlow.Transparency = 0.7
 knobGlow.Parent = toggleKnob
@@ -705,17 +752,19 @@ infoText.Size = UDim2.new(1, 0, 0, 40)
 infoText.Position = UDim2.new(0, 0, 0, 68)
 infoText.BackgroundTransparency = 1
 infoText.Text = "Sets all nearby ProximityPrompt\nhold durations to 0 instantly."
-infoText.TextColor3 = Color3.fromRGB(100, 100, 130)
+infoText.TextColor3 = Color3.fromRGB(90, 85, 120)
 infoText.TextSize = 11
 infoText.Font = Enum.Font.Gotham
 infoText.TextXAlignment = Enum.TextXAlignment.Center
+infoText.ZIndex = 4
 infoText.Parent = bypassContent
 
 local statusBar = Instance.new("Frame")
 statusBar.Size = UDim2.new(1, 0, 0, 36)
 statusBar.Position = UDim2.new(0, 0, 1, -36)
-statusBar.BackgroundColor3 = Color3.fromRGB(22, 22, 34)
+statusBar.BackgroundColor3 = Color3.fromRGB(16, 14, 30)
 statusBar.BorderSizePixel = 0
+statusBar.ZIndex = 4
 statusBar.Parent = bypassContent
 Instance.new("UICorner", statusBar).CornerRadius = UDim.new(0, 8)
 
@@ -724,197 +773,197 @@ statusText.Size = UDim2.new(1, -10, 1, 0)
 statusText.Position = UDim2.new(0, 10, 0, 0)
 statusText.BackgroundTransparency = 1
 statusText.Text = "Status: Inactive"
-statusText.TextColor3 = Color3.fromRGB(100, 100, 120)
+statusText.TextColor3 = Color3.fromRGB(90, 88, 115)
 statusText.TextSize = 11
 statusText.Font = Enum.Font.GothamMedium
 statusText.TextXAlignment = Enum.TextXAlignment.Left
+statusText.ZIndex = 5
 statusText.Parent = statusBar
 
--- Bypass logic
 local dotPulseConnection = nil
 
 local function startBypass()
-	task.spawn(function()
-		while enabled do
-			character = player.Character
-			if character and character:FindFirstChild("HumanoidRootPart") then
-				local count = 0
-				for _, d in ipairs(workspace:GetDescendants()) do
-					if d:IsA("ProximityPrompt") and d.Enabled then
-						local pp = d.Parent
-						if pp and pp:IsA("BasePart") then
-							if (character.HumanoidRootPart.Position - pp.Position).Magnitude < 15 then
-								d.HoldDuration = 0
-								count += 1
-							end
-						end
-					end
-				end
-				statusText.Text = "Status: Active | " .. count .. " prompts"
-			end
-			task.wait(0.3)
-		end
-	end)
+    task.spawn(function()
+        while enabled do
+            character = player.Character
+            if character and character:FindFirstChild("HumanoidRootPart") then
+                local count = 0
+                for _, d in ipairs(workspace:GetDescendants()) do
+                    if d:IsA("ProximityPrompt") and d.Enabled then
+                        local pp = d.Parent
+                        if pp and pp:IsA("BasePart") then
+                            if (character.HumanoidRootPart.Position - pp.Position).Magnitude < 15 then
+                                d.HoldDuration = 0; count += 1
+                            end
+                        end
+                    end
+                end
+                statusText.Text = "Status: Active | " .. count .. " prompts"
+            end
+            task.wait(0.3)
+        end
+    end)
 end
 
 local function toggleBypass()
-	enabled = not enabled
-	createRipple(toggleContainer)
-	if enabled then
-		TweenService:Create(toggleSwitch, tweenInfo, {BackgroundColor3 = Color3.fromRGB(80, 50, 180)}):Play()
-		TweenService:Create(toggleSwitchStroke, tweenInfo, {Color = Color3.fromRGB(130, 90, 230)}):Play()
-		TweenService:Create(toggleKnob, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-			Position = UDim2.new(1, -23, 0.5, -10), BackgroundColor3 = Color3.fromRGB(230, 210, 255)
-		}):Play()
-		TweenService:Create(knobGlow, tweenInfo, {Thickness = 2, Color = Color3.fromRGB(160, 120, 255)}):Play()
-		TweenService:Create(statusDot, tweenInfo, {BackgroundColor3 = Color3.fromRGB(120, 255, 120)}):Play()
-		TweenService:Create(toggleLabel, tweenInfo, {TextColor3 = Color3.fromRGB(230, 230, 250)}):Play()
-		statusText.TextColor3 = Color3.fromRGB(120, 200, 120)
-		dotPulseConnection = RunService.Heartbeat:Connect(function()
-			statusDot.BackgroundTransparency = 0.15 + math.sin(tick() * 3) * 0.15
-		end)
-		startBypass()
-	else
-		TweenService:Create(toggleSwitch, tweenInfo, {BackgroundColor3 = Color3.fromRGB(55, 55, 70)}):Play()
-		TweenService:Create(toggleSwitchStroke, tweenInfo, {Color = Color3.fromRGB(70, 70, 90)}):Play()
-		TweenService:Create(toggleKnob, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-			Position = UDim2.new(0, 3, 0.5, -10), BackgroundColor3 = Color3.fromRGB(170, 170, 180)
-		}):Play()
-		TweenService:Create(knobGlow, tweenInfo, {Thickness = 0}):Play()
-		TweenService:Create(statusDot, tweenInfo, {BackgroundColor3 = Color3.fromRGB(100, 100, 100)}):Play()
-		statusDot.BackgroundTransparency = 0
-		TweenService:Create(toggleLabel, tweenInfo, {TextColor3 = Color3.fromRGB(190, 190, 210)}):Play()
-		statusText.Text = "Status: Inactive"
-		statusText.TextColor3 = Color3.fromRGB(100, 100, 120)
-		if dotPulseConnection then dotPulseConnection:Disconnect(); dotPulseConnection = nil end
-	end
+    enabled = not enabled
+    createRipple(toggleContainer)
+    if enabled then
+        TweenService:Create(toggleSwitch, tweenInfo, {BackgroundColor3 = Color3.fromRGB(70, 40, 170)}):Play()
+        TweenService:Create(tsStroke, tweenInfo, {Color = Color3.fromRGB(120, 80, 220)}):Play()
+        TweenService:Create(toggleKnob, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+            Position = UDim2.new(1, -23, 0.5, -10), BackgroundColor3 = Color3.fromRGB(220, 200, 255)
+        }):Play()
+        TweenService:Create(knobGlow, tweenInfo, {Thickness = 2, Color = Color3.fromRGB(160, 120, 255)}):Play()
+        TweenService:Create(statusDot, tweenInfo, {BackgroundColor3 = Color3.fromRGB(100, 240, 100)}):Play()
+        TweenService:Create(toggleLabel, tweenInfo, {TextColor3 = Color3.fromRGB(225, 220, 250)}):Play()
+        statusText.TextColor3 = Color3.fromRGB(100, 200, 100)
+        dotPulseConnection = RunService.Heartbeat:Connect(function()
+            if statusDot and statusDot.Parent then
+                statusDot.BackgroundTransparency = 0.15 + math.sin(tick() * 3) * 0.15
+            end
+        end)
+        startBypass()
+    else
+        TweenService:Create(toggleSwitch, tweenInfo, {BackgroundColor3 = Color3.fromRGB(45, 42, 65)}):Play()
+        TweenService:Create(tsStroke, tweenInfo, {Color = Color3.fromRGB(60, 55, 85)}):Play()
+        TweenService:Create(toggleKnob, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+            Position = UDim2.new(0, 3, 0.5, -10), BackgroundColor3 = Color3.fromRGB(150, 148, 170)
+        }):Play()
+        TweenService:Create(knobGlow, tweenInfo, {Thickness = 0}):Play()
+        TweenService:Create(statusDot, tweenInfo, {BackgroundColor3 = Color3.fromRGB(80, 80, 80)}):Play()
+        statusDot.BackgroundTransparency = 0
+        TweenService:Create(toggleLabel, tweenInfo, {TextColor3 = Color3.fromRGB(180, 175, 205)}):Play()
+        statusText.Text = "Status: Inactive"
+        statusText.TextColor3 = Color3.fromRGB(90, 88, 115)
+        if dotPulseConnection then dotPulseConnection:Disconnect(); dotPulseConnection = nil end
+    end
 end
 
 toggleSwitch.MouseButton1Click:Connect(toggleBypass)
 toggleSwitch.MouseEnter:Connect(function()
-	TweenService:Create(toggleContainerStroke, tweenFast, {Color = enabled and Color3.fromRGB(120, 80, 220) or Color3.fromRGB(80, 75, 120)}):Play()
-	TweenService:Create(toggleKnob, tweenFast, {Size = UDim2.new(0, 22, 0, 22)}):Play()
+    TweenService:Create(tcStroke, tweenFast, {Color = enabled and Color3.fromRGB(110, 70, 210) or Color3.fromRGB(70, 62, 110)}):Play()
+    TweenService:Create(toggleKnob, tweenFast, {Size = UDim2.new(0, 22, 0, 22)}):Play()
 end)
 toggleSwitch.MouseLeave:Connect(function()
-	TweenService:Create(toggleContainerStroke, tweenFast, {Color = Color3.fromRGB(50, 45, 75)}):Play()
-	TweenService:Create(toggleKnob, tweenFast, {Size = UDim2.new(0, 20, 0, 20)}):Play()
+    TweenService:Create(tcStroke, tweenFast, {Color = Color3.fromRGB(45, 38, 70)}):Play()
+    TweenService:Create(toggleKnob, tweenFast, {Size = UDim2.new(0, 20, 0, 20)}):Play()
 end)
 
 -- ============================================
 -- WAYPOINT CONTENT
 -- ============================================
-local saveWaypointBtn = Instance.new("TextButton")
-saveWaypointBtn.Size = UDim2.new(1, 0, 0, 40)
-saveWaypointBtn.Position = UDim2.new(0, 0, 0, 5)
-saveWaypointBtn.BackgroundColor3 = Color3.fromRGB(45, 35, 90)
-saveWaypointBtn.Text = ""
-saveWaypointBtn.BorderSizePixel = 0
-saveWaypointBtn.AutoButtonColor = false
-saveWaypointBtn.ClipsDescendants = true
-saveWaypointBtn.Parent = waypointContent
+local saveBtn = Instance.new("TextButton")
+saveBtn.Size = UDim2.new(1, 0, 0, 38)
+saveBtn.Position = UDim2.new(0, 0, 0, 5)
+saveBtn.BackgroundColor3 = Color3.fromRGB(38, 28, 80)
+saveBtn.Text = ""
+saveBtn.BorderSizePixel = 0
+saveBtn.AutoButtonColor = false
+saveBtn.ClipsDescendants = true
+saveBtn.ZIndex = 4
+saveBtn.Parent = waypointContent
+Instance.new("UICorner", saveBtn).CornerRadius = UDim.new(0, 10)
 
-Instance.new("UICorner", saveWaypointBtn).CornerRadius = UDim.new(0, 10)
 local saveStroke = Instance.new("UIStroke")
-saveStroke.Color = Color3.fromRGB(90, 65, 170)
+saveStroke.Color = Color3.fromRGB(80, 55, 160)
 saveStroke.Thickness = 1
 saveStroke.Transparency = 0.2
-saveStroke.Parent = saveWaypointBtn
+saveStroke.Parent = saveBtn
 
 local saveLabel = Instance.new("TextLabel")
 saveLabel.Size = UDim2.new(1, -10, 1, 0)
 saveLabel.Position = UDim2.new(0, 12, 0, 0)
 saveLabel.BackgroundTransparency = 1
 saveLabel.Text = "📌  Save Current Position"
-saveLabel.TextColor3 = Color3.fromRGB(210, 200, 255)
-saveLabel.TextSize = 13
+saveLabel.TextColor3 = Color3.fromRGB(200, 190, 250)
+saveLabel.TextSize = 12
 saveLabel.Font = Enum.Font.GothamBold
 saveLabel.TextXAlignment = Enum.TextXAlignment.Left
-saveLabel.Parent = saveWaypointBtn
+saveLabel.ZIndex = 5
+saveLabel.Parent = saveBtn
 
-local clearAllBtn = Instance.new("TextButton")
-clearAllBtn.Size = UDim2.new(1, 0, 0, 32)
-clearAllBtn.Position = UDim2.new(0, 0, 0, 50)
-clearAllBtn.BackgroundColor3 = Color3.fromRGB(60, 25, 25)
-clearAllBtn.Text = ""
-clearAllBtn.BorderSizePixel = 0
-clearAllBtn.AutoButtonColor = false
-clearAllBtn.ClipsDescendants = true
-clearAllBtn.Parent = waypointContent
+local clearBtn = Instance.new("TextButton")
+clearBtn.Size = UDim2.new(1, 0, 0, 30)
+clearBtn.Position = UDim2.new(0, 0, 0, 48)
+clearBtn.BackgroundColor3 = Color3.fromRGB(55, 20, 20)
+clearBtn.Text = ""
+clearBtn.BorderSizePixel = 0
+clearBtn.AutoButtonColor = false
+clearBtn.ClipsDescendants = true
+clearBtn.ZIndex = 4
+clearBtn.Parent = waypointContent
+Instance.new("UICorner", clearBtn).CornerRadius = UDim.new(0, 8)
 
-Instance.new("UICorner", clearAllBtn).CornerRadius = UDim.new(0, 8)
 local clearStroke = Instance.new("UIStroke")
-clearStroke.Color = Color3.fromRGB(110, 45, 45)
+clearStroke.Color = Color3.fromRGB(100, 40, 40)
 clearStroke.Thickness = 1
 clearStroke.Transparency = 0.4
-clearStroke.Parent = clearAllBtn
+clearStroke.Parent = clearBtn
 
 local clearLabel = Instance.new("TextLabel")
 clearLabel.Size = UDim2.new(1, 0, 1, 0)
 clearLabel.BackgroundTransparency = 1
-clearLabel.Text = "🗑️  Clear All Waypoints"
-clearLabel.TextColor3 = Color3.fromRGB(200, 120, 120)
-clearLabel.TextSize = 12
+clearLabel.Text = "🗑️ Clear All"
+clearLabel.TextColor3 = Color3.fromRGB(190, 110, 110)
+clearLabel.TextSize = 11
 clearLabel.Font = Enum.Font.GothamMedium
-clearLabel.Parent = clearAllBtn
+clearLabel.ZIndex = 5
+clearLabel.Parent = clearBtn
 
-local divider = Instance.new("Frame")
-divider.Size = UDim2.new(1, 0, 0, 1)
-divider.Position = UDim2.new(0, 0, 0, 90)
-divider.BackgroundColor3 = Color3.fromRGB(60, 50, 100)
-divider.BackgroundTransparency = 0.4
-divider.BorderSizePixel = 0
-divider.Parent = waypointContent
+local wpListLabel = Instance.new("TextLabel")
+wpListLabel.Size = UDim2.new(1, 0, 0, 18)
+wpListLabel.Position = UDim2.new(0, 0, 0, 84)
+wpListLabel.BackgroundTransparency = 1
+wpListLabel.Text = "Saved Waypoints (click name to rename):"
+wpListLabel.TextColor3 = Color3.fromRGB(110, 105, 145)
+wpListLabel.TextSize = 9
+wpListLabel.Font = Enum.Font.GothamMedium
+wpListLabel.TextXAlignment = Enum.TextXAlignment.Left
+wpListLabel.ZIndex = 4
+wpListLabel.Parent = waypointContent
 
-local listLabel = Instance.new("TextLabel")
-listLabel.Size = UDim2.new(1, 0, 0, 20)
-listLabel.Position = UDim2.new(0, 0, 0, 95)
-listLabel.BackgroundTransparency = 1
-listLabel.Text = "Saved Waypoints (click name to rename):"
-listLabel.TextColor3 = Color3.fromRGB(130, 130, 160)
-listLabel.TextSize = 10
-listLabel.Font = Enum.Font.GothamMedium
-listLabel.TextXAlignment = Enum.TextXAlignment.Left
-listLabel.Parent = waypointContent
+local wpScroll = Instance.new("ScrollingFrame")
+wpScroll.Size = UDim2.new(1, 0, 1, -108)
+wpScroll.Position = UDim2.new(0, 0, 0, 105)
+wpScroll.BackgroundColor3 = Color3.fromRGB(14, 12, 26)
+wpScroll.BorderSizePixel = 0
+wpScroll.ScrollBarThickness = 3
+wpScroll.ScrollBarImageColor3 = Color3.fromRGB(90, 60, 170)
+wpScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+wpScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+wpScroll.ZIndex = 4
+wpScroll.Parent = waypointContent
+Instance.new("UICorner", wpScroll).CornerRadius = UDim.new(0, 8)
 
-local waypointScroll = Instance.new("ScrollingFrame")
-waypointScroll.Size = UDim2.new(1, 0, 1, -122)
-waypointScroll.Position = UDim2.new(0, 0, 0, 118)
-waypointScroll.BackgroundColor3 = Color3.fromRGB(20, 20, 32)
-waypointScroll.BorderSizePixel = 0
-waypointScroll.ScrollBarThickness = 4
-waypointScroll.ScrollBarImageColor3 = Color3.fromRGB(100, 70, 180)
-waypointScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-waypointScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-waypointScroll.Parent = waypointContent
+local wpScrollStroke = Instance.new("UIStroke")
+wpScrollStroke.Color = Color3.fromRGB(42, 36, 72)
+wpScrollStroke.Thickness = 1
+wpScrollStroke.Transparency = 0.4
+wpScrollStroke.Parent = wpScroll
 
-Instance.new("UICorner", waypointScroll).CornerRadius = UDim.new(0, 8)
-local scrollStroke = Instance.new("UIStroke")
-scrollStroke.Color = Color3.fromRGB(50, 42, 80)
-scrollStroke.Thickness = 1
-scrollStroke.Transparency = 0.4
-scrollStroke.Parent = waypointScroll
+local wpLayout = Instance.new("UIListLayout")
+wpLayout.SortOrder = Enum.SortOrder.LayoutOrder
+wpLayout.Padding = UDim.new(0, 4)
+wpLayout.Parent = wpScroll
 
-local listLayout = Instance.new("UIListLayout")
-listLayout.SortOrder = Enum.SortOrder.LayoutOrder
-listLayout.Padding = UDim.new(0, 4)
-listLayout.Parent = waypointScroll
+local wpPad = Instance.new("UIPadding")
+wpPad.PaddingTop = UDim.new(0, 4)
+wpPad.PaddingBottom = UDim.new(0, 4)
+wpPad.PaddingLeft = UDim.new(0, 4)
+wpPad.PaddingRight = UDim.new(0, 4)
+wpPad.Parent = wpScroll
 
-local lp = Instance.new("UIPadding")
-lp.PaddingTop = UDim.new(0, 4)
-lp.PaddingBottom = UDim.new(0, 4)
-lp.PaddingLeft = UDim.new(0, 4)
-lp.PaddingRight = UDim.new(0, 4)
-lp.Parent = waypointScroll
-
-local noWaypointsLabel = Instance.new("TextLabel")
-noWaypointsLabel.Name = "NoWaypoints"
-noWaypointsLabel.Size = UDim2.new(1, 0, 0, 50)
-noWaypointsLabel.BackgroundTransparency = 1
-noWaypointsLabel.Text = "No waypoints saved yet."
-noWaypointsLabel.TextColor3 = Color3.fromRGB(70, 70, 90)
-noWaypointsLabel.TextSize = 11
-noWaypointsLabel.Font = Enum.Font.Gotham
-noWaypointsLabel.Parent = waypointScroll
+local noWpLabel = Instance.new("TextLabel")
+noWpLabel.Name = "NoWp"
+noWpLabel.Size = UDim2.new(1, 0, 0, 45)
+noWpLabel.BackgroundTransparency = 1
+noWpLabel.Text = "No waypoints saved yet."
+noWpLabel.TextColor3 = Color3.fromRGB(60, 55, 85)
+noWpLabel.TextSize = 11
+noWpLabel.Font = Enum.Font.Gotham
+noWpLabel.ZIndex = 5
+noWpLabel.Parent = wpScroll
 
 -- ============================================
 -- RENAME OVERLAY
@@ -930,978 +979,1047 @@ renameOverlay.Parent = mainFrame
 local renameDialog = Instance.new("Frame")
 renameDialog.Size = UDim2.new(0, 240, 0, 155)
 renameDialog.Position = UDim2.new(0.5, -120, 0.5, -78)
-renameDialog.BackgroundColor3 = Color3.fromRGB(25, 22, 40)
+renameDialog.BackgroundColor3 = Color3.fromRGB(22, 18, 38)
 renameDialog.BorderSizePixel = 0
 renameDialog.ZIndex = 51
 renameDialog.Parent = renameOverlay
-
 Instance.new("UICorner", renameDialog).CornerRadius = UDim.new(0, 12)
-local renameDialogStroke = Instance.new("UIStroke")
-renameDialogStroke.Color = Color3.fromRGB(110, 80, 200)
-renameDialogStroke.Thickness = 1.5
-renameDialogStroke.Parent = renameDialog
 
-local renameTitle = Instance.new("TextLabel")
-renameTitle.Size = UDim2.new(1, 0, 0, 35)
-renameTitle.Position = UDim2.new(0, 0, 0, 5)
-renameTitle.BackgroundTransparency = 1
-renameTitle.Text = "✏️  Rename Waypoint"
-renameTitle.TextColor3 = Color3.fromRGB(220, 210, 255)
-renameTitle.TextSize = 14
-renameTitle.Font = Enum.Font.GothamBold
-renameTitle.ZIndex = 52
-renameTitle.Parent = renameDialog
+local rdStroke = Instance.new("UIStroke")
+rdStroke.Color = Color3.fromRGB(100, 70, 190)
+rdStroke.Thickness = 1.5
+rdStroke.Parent = renameDialog
 
-local renameInput = Instance.new("TextBox")
-renameInput.Size = UDim2.new(1, -30, 0, 36)
-renameInput.Position = UDim2.new(0, 15, 0, 42)
-renameInput.BackgroundColor3 = Color3.fromRGB(35, 32, 55)
-renameInput.Text = ""
-renameInput.PlaceholderText = "Enter new name..."
-renameInput.PlaceholderColor3 = Color3.fromRGB(90, 85, 120)
-renameInput.TextColor3 = Color3.fromRGB(220, 215, 250)
-renameInput.TextSize = 13
-renameInput.Font = Enum.Font.GothamMedium
-renameInput.ClearTextOnFocus = false
-renameInput.BorderSizePixel = 0
-renameInput.ZIndex = 52
-renameInput.Parent = renameDialog
+local rdGlow = Instance.new("ImageLabel")
+rdGlow.Size = UDim2.new(1, 24, 1, 24)
+rdGlow.Position = UDim2.new(0, -12, 0, -12)
+rdGlow.BackgroundTransparency = 1
+rdGlow.Image = "rbxassetid://5554236805"
+rdGlow.ImageColor3 = Color3.fromRGB(80, 50, 170)
+rdGlow.ImageTransparency = 0.8
+rdGlow.ScaleType = Enum.ScaleType.Slice
+rdGlow.SliceCenter = Rect.new(23, 23, 277, 277)
+rdGlow.ZIndex = 50
+rdGlow.Parent = renameDialog
 
-Instance.new("UICorner", renameInput).CornerRadius = UDim.new(0, 8)
-local rip = Instance.new("UIPadding")
-rip.PaddingLeft = UDim.new(0, 10)
-rip.PaddingRight = UDim.new(0, 10)
-rip.Parent = renameInput
+local rdTitle = Instance.new("TextLabel")
+rdTitle.Size = UDim2.new(1, 0, 0, 32)
+rdTitle.Position = UDim2.new(0, 0, 0, 5)
+rdTitle.BackgroundTransparency = 1
+rdTitle.Text = "✏️  Rename Waypoint"
+rdTitle.TextColor3 = Color3.fromRGB(215, 205, 250)
+rdTitle.TextSize = 14
+rdTitle.Font = Enum.Font.GothamBold
+rdTitle.ZIndex = 52
+rdTitle.Parent = renameDialog
 
-local renameConfirmBtn = Instance.new("TextButton")
-renameConfirmBtn.Size = UDim2.new(0.48, -8, 0, 34)
-renameConfirmBtn.Position = UDim2.new(0, 15, 0, 92)
-renameConfirmBtn.BackgroundColor3 = Color3.fromRGB(50, 40, 110)
-renameConfirmBtn.Text = "✓ Confirm"
-renameConfirmBtn.TextColor3 = Color3.fromRGB(200, 190, 255)
-renameConfirmBtn.TextSize = 12
-renameConfirmBtn.Font = Enum.Font.GothamBold
-renameConfirmBtn.BorderSizePixel = 0
-renameConfirmBtn.AutoButtonColor = false
-renameConfirmBtn.ZIndex = 52
-renameConfirmBtn.ClipsDescendants = true
-renameConfirmBtn.Parent = renameDialog
-Instance.new("UICorner", renameConfirmBtn).CornerRadius = UDim.new(0, 8)
+local rdInput = Instance.new("TextBox")
+rdInput.Size = UDim2.new(1, -30, 0, 34)
+rdInput.Position = UDim2.new(0, 15, 0, 40)
+rdInput.BackgroundColor3 = Color3.fromRGB(30, 26, 50)
+rdInput.Text = ""
+rdInput.PlaceholderText = "Enter new name..."
+rdInput.PlaceholderColor3 = Color3.fromRGB(80, 75, 110)
+rdInput.TextColor3 = Color3.fromRGB(215, 210, 245)
+rdInput.TextSize = 13
+rdInput.Font = Enum.Font.GothamMedium
+rdInput.ClearTextOnFocus = false
+rdInput.BorderSizePixel = 0
+rdInput.ZIndex = 52
+rdInput.Parent = renameDialog
+Instance.new("UICorner", rdInput).CornerRadius = UDim.new(0, 8)
+local rdPad = Instance.new("UIPadding")
+rdPad.PaddingLeft = UDim.new(0, 10)
+rdPad.PaddingRight = UDim.new(0, 10)
+rdPad.Parent = rdInput
 
-local renameCancelBtn = Instance.new("TextButton")
-renameCancelBtn.Size = UDim2.new(0.48, -8, 0, 34)
-renameCancelBtn.Position = UDim2.new(0.52, 0, 0, 92)
-renameCancelBtn.BackgroundColor3 = Color3.fromRGB(55, 30, 30)
-renameCancelBtn.Text = "✕ Cancel"
-renameCancelBtn.TextColor3 = Color3.fromRGB(200, 140, 140)
-renameCancelBtn.TextSize = 12
-renameCancelBtn.Font = Enum.Font.GothamBold
-renameCancelBtn.BorderSizePixel = 0
-renameCancelBtn.AutoButtonColor = false
-renameCancelBtn.ZIndex = 52
-renameCancelBtn.ClipsDescendants = true
-renameCancelBtn.Parent = renameDialog
-Instance.new("UICorner", renameCancelBtn).CornerRadius = UDim.new(0, 8)
+local rdConfirm = Instance.new("TextButton")
+rdConfirm.Size = UDim2.new(0.48, -8, 0, 32)
+rdConfirm.Position = UDim2.new(0, 15, 0, 86)
+rdConfirm.BackgroundColor3 = Color3.fromRGB(45, 35, 100)
+rdConfirm.Text = "✓ Confirm"
+rdConfirm.TextColor3 = Color3.fromRGB(195, 185, 250)
+rdConfirm.TextSize = 12
+rdConfirm.Font = Enum.Font.GothamBold
+rdConfirm.BorderSizePixel = 0
+rdConfirm.AutoButtonColor = false
+rdConfirm.ZIndex = 52
+rdConfirm.ClipsDescendants = true
+rdConfirm.Parent = renameDialog
+Instance.new("UICorner", rdConfirm).CornerRadius = UDim.new(0, 8)
 
-local activeRenameIndex, activeRenameNameLabel = nil, nil
+local rdCancel = Instance.new("TextButton")
+rdCancel.Size = UDim2.new(0.48, -8, 0, 32)
+rdCancel.Position = UDim2.new(0.52, 0, 0, 86)
+rdCancel.BackgroundColor3 = Color3.fromRGB(50, 25, 25)
+rdCancel.Text = "✕ Cancel"
+rdCancel.TextColor3 = Color3.fromRGB(195, 130, 130)
+rdCancel.TextSize = 12
+rdCancel.Font = Enum.Font.GothamBold
+rdCancel.BorderSizePixel = 0
+rdCancel.AutoButtonColor = false
+rdCancel.ZIndex = 52
+rdCancel.ClipsDescendants = true
+rdCancel.Parent = renameDialog
+Instance.new("UICorner", rdCancel).CornerRadius = UDim.new(0, 8)
 
-local function openRenameDialog(wpIndex, nameLabel, currentName)
-	activeRenameIndex = wpIndex
-	activeRenameNameLabel = nameLabel
-	renameInput.Text = currentName
-	renameOverlay.Visible = true
-	renameOverlay.BackgroundTransparency = 1
-	TweenService:Create(renameOverlay, TweenInfo.new(0.2), {BackgroundTransparency = 0.35}):Play()
-	renameDialog.Size = UDim2.new(0, 200, 0, 20)
-	renameDialog.BackgroundTransparency = 0.5
-	TweenService:Create(renameDialog, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-		Size = UDim2.new(0, 240, 0, 155), BackgroundTransparency = 0
-	}):Play()
-	task.wait(0.2)
-	renameInput:CaptureFocus()
+local activeRenameIndex, activeRenameLabel = nil, nil
+
+local function openRename(wpIdx, label, curName)
+    activeRenameIndex = wpIdx; activeRenameLabel = label
+    rdInput.Text = curName; renameOverlay.Visible = true
+    renameOverlay.BackgroundTransparency = 1
+    TweenService:Create(renameOverlay, TweenInfo.new(0.2), {BackgroundTransparency = 0.4}):Play()
+    renameDialog.Size = UDim2.new(0, 200, 0, 20)
+    renameDialog.BackgroundTransparency = 0.5
+    rdGlow.ImageTransparency = 1
+    TweenService:Create(renameDialog, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+        Size = UDim2.new(0, 240, 0, 155), BackgroundTransparency = 0
+    }):Play()
+    TweenService:Create(rdGlow, TweenInfo.new(0.5), {ImageTransparency = 0.8}):Play()
+    task.wait(0.2); rdInput:CaptureFocus()
 end
 
-local function closeRenameDialog()
-	TweenService:Create(renameOverlay, TweenInfo.new(0.2), {BackgroundTransparency = 1}):Play()
-	TweenService:Create(renameDialog, TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
-		Size = UDim2.new(0, 200, 0, 20), BackgroundTransparency = 0.8
-	}):Play()
-	task.wait(0.2)
-	renameOverlay.Visible = false
-	activeRenameIndex, activeRenameNameLabel = nil, nil
+local function closeRename()
+    TweenService:Create(renameOverlay, TweenInfo.new(0.2), {BackgroundTransparency = 1}):Play()
+    TweenService:Create(renameDialog, TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
+        Size = UDim2.new(0, 200, 0, 20), BackgroundTransparency = 0.8
+    }):Play()
+    TweenService:Create(rdGlow, TweenInfo.new(0.2), {ImageTransparency = 1}):Play()
+    task.wait(0.2); renameOverlay.Visible = false
+    activeRenameIndex, activeRenameLabel = nil, nil
 end
 
 local function confirmRename()
-	local nn = renameInput.Text
-	if nn == "" then nn = "Waypoint" end
-	if #nn > 24 then nn = string.sub(nn, 1, 24) end
-	for _, wp in ipairs(waypoints) do
-		if wp.index == activeRenameIndex then wp.name = nn; break end
-	end
-	if activeRenameNameLabel then
-		activeRenameNameLabel.Text = "📍 " .. nn
-		TweenService:Create(activeRenameNameLabel, tweenFast, {TextColor3 = Color3.fromRGB(150, 255, 150)}):Play()
-		local ref = activeRenameNameLabel
-		task.delay(0.3, function()
-			if ref.Parent then TweenService:Create(ref, tweenFast, {TextColor3 = Color3.fromRGB(200, 195, 230)}):Play() end
-		end)
-	end
-	closeRenameDialog()
+    local nn = rdInput.Text
+    if nn == "" then nn = "Waypoint" end
+    if #nn > 24 then nn = nn:sub(1, 24) end
+    for _, wp in ipairs(waypoints) do
+        if wp.index == activeRenameIndex then wp.name = nn; break end
+    end
+    if activeRenameLabel then
+        activeRenameLabel.Text = "📍 " .. nn
+        TweenService:Create(activeRenameLabel, tweenFast, {TextColor3 = Color3.fromRGB(140, 250, 140)}):Play()
+        local ref = activeRenameLabel
+        task.delay(0.3, function()
+            if ref and ref.Parent then TweenService:Create(ref, tweenFast, {TextColor3 = Color3.fromRGB(190, 185, 225)}):Play() end
+        end)
+    end
+    closeRename()
 end
 
-renameConfirmBtn.MouseButton1Click:Connect(function() createRipple(renameConfirmBtn); confirmRename() end)
-renameCancelBtn.MouseButton1Click:Connect(function() createRipple(renameCancelBtn); closeRenameDialog() end)
-renameInput.FocusLost:Connect(function(ep) if ep then confirmRename() end end)
-
+rdConfirm.MouseButton1Click:Connect(function() createRipple(rdConfirm); confirmRename() end)
+rdCancel.MouseButton1Click:Connect(function() createRipple(rdCancel); closeRename() end)
+rdInput.FocusLost:Connect(function(ep) if ep then confirmRename() end end)
 renameOverlay.InputBegan:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 then
-		local mp = input.Position
-		local dp = renameDialog.AbsolutePosition
-		local ds = renameDialog.AbsoluteSize
-		if mp.X < dp.X or mp.X > dp.X + ds.X or mp.Y < dp.Y or mp.Y > dp.Y + ds.Y then
-			closeRenameDialog()
-		end
-	end
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        local mp = input.Position; local dp = renameDialog.AbsolutePosition; local ds = renameDialog.AbsoluteSize
+        if mp.X < dp.X or mp.X > dp.X + ds.X or mp.Y < dp.Y or mp.Y > dp.Y + ds.Y then closeRename() end
+    end
 end)
+
+rdConfirm.MouseEnter:Connect(function() TweenService:Create(rdConfirm, tweenFast, {BackgroundColor3 = Color3.fromRGB(65, 50, 140)}):Play() end)
+rdConfirm.MouseLeave:Connect(function() TweenService:Create(rdConfirm, tweenFast, {BackgroundColor3 = Color3.fromRGB(45, 35, 100)}):Play() end)
+rdCancel.MouseEnter:Connect(function() TweenService:Create(rdCancel, tweenFast, {BackgroundColor3 = Color3.fromRGB(80, 35, 35)}):Play() end)
+rdCancel.MouseLeave:Connect(function() TweenService:Create(rdCancel, tweenFast, {BackgroundColor3 = Color3.fromRGB(50, 25, 25)}):Play() end)
 
 -- ============================================
 -- WAYPOINT ENTRY
 -- ============================================
-local function createWaypointEntry(name, position, index)
-	local entry = Instance.new("Frame")
-	entry.Name = "Waypoint_" .. index
-	entry.Size = UDim2.new(1, -8, 0, 0)
-	entry.BackgroundColor3 = Color3.fromRGB(28, 26, 45)
-	entry.BackgroundTransparency = 0.5
-	entry.BorderSizePixel = 0
-	entry.LayoutOrder = index
-	entry.ClipsDescendants = true
-	entry.Parent = waypointScroll
+local function createWpEntry(name, pos, idx)
+    local e = Instance.new("Frame")
+    e.Name = "Wp_" .. idx
+    e.Size = UDim2.new(1, -8, 0, 0)
+    e.BackgroundColor3 = Color3.fromRGB(22, 20, 40)
+    e.BackgroundTransparency = 0.5
+    e.BorderSizePixel = 0
+    e.LayoutOrder = idx
+    e.ClipsDescendants = true
+    e.ZIndex = 5
+    e.Parent = wpScroll
+    Instance.new("UICorner", e).CornerRadius = UDim.new(0, 8)
 
-	Instance.new("UICorner", entry).CornerRadius = UDim.new(0, 8)
-	local es = Instance.new("UIStroke")
-	es.Color = Color3.fromRGB(55, 48, 85)
-	es.Thickness = 1
-	es.Transparency = 0.6
-	es.Parent = entry
+    local es = Instance.new("UIStroke")
+    es.Color = Color3.fromRGB(48, 42, 78)
+    es.Thickness = 1
+    es.Transparency = 0.5
+    es.Parent = e
 
-	local accent = Instance.new("Frame")
-	accent.Size = UDim2.new(0, 3, 0, 0)
-	accent.Position = UDim2.new(0, 0, 0.15, 0)
-	accent.BackgroundColor3 = Color3.fromRGB(120, 80, 220)
-	accent.BackgroundTransparency = 0.3
-	accent.BorderSizePixel = 0
-	accent.Parent = entry
-	Instance.new("UICorner", accent).CornerRadius = UDim.new(0, 2)
+    local accent = Instance.new("Frame")
+    accent.Size = UDim2.new(0, 3, 0, 0)
+    accent.Position = UDim2.new(0, 0, 0.15, 0)
+    accent.BackgroundColor3 = Color3.fromRGB(110, 70, 210)
+    accent.BackgroundTransparency = 0.3
+    accent.BorderSizePixel = 0
+    accent.ZIndex = 6
+    accent.Parent = e
+    Instance.new("UICorner", accent).CornerRadius = UDim.new(0, 2)
 
-	local nameBtn = Instance.new("TextButton")
-	nameBtn.Size = UDim2.new(0.48, 0, 0, 18)
-	nameBtn.Position = UDim2.new(0, 12, 0, 6)
-	nameBtn.BackgroundTransparency = 1
-	nameBtn.Text = "📍 " .. name
-	nameBtn.TextColor3 = Color3.fromRGB(200, 195, 230)
-	nameBtn.TextSize = 11
-	nameBtn.Font = Enum.Font.GothamBold
-	nameBtn.TextXAlignment = Enum.TextXAlignment.Left
-	nameBtn.TextTruncate = Enum.TextTruncate.AtEnd
-	nameBtn.AutoButtonColor = false
-	nameBtn.TextTransparency = 1
-	nameBtn.Parent = entry
+    local nb = Instance.new("TextButton")
+    nb.Size = UDim2.new(0.5, 0, 0, 16)
+    nb.Position = UDim2.new(0, 12, 0, 5)
+    nb.BackgroundTransparency = 1
+    nb.Text = "📍 " .. name
+    nb.TextColor3 = Color3.fromRGB(190, 185, 225)
+    nb.TextSize = 11
+    nb.Font = Enum.Font.GothamBold
+    nb.TextXAlignment = Enum.TextXAlignment.Left
+    nb.TextTruncate = Enum.TextTruncate.AtEnd
+    nb.AutoButtonColor = false
+    nb.TextTransparency = 1
+    nb.ZIndex = 6
+    nb.Parent = e
 
-	local coordLabel = Instance.new("TextLabel")
-	coordLabel.Size = UDim2.new(0.7, 0, 0, 12)
-	coordLabel.Position = UDim2.new(0, 12, 0, 28)
-	coordLabel.BackgroundTransparency = 1
-	coordLabel.Text = string.format("X:%.0f Y:%.0f Z:%.0f", position.X, position.Y, position.Z)
-	coordLabel.TextColor3 = Color3.fromRGB(75, 75, 105)
-	coordLabel.TextSize = 9
-	coordLabel.Font = Enum.Font.Gotham
-	coordLabel.TextXAlignment = Enum.TextXAlignment.Left
-	coordLabel.TextTransparency = 1
-	coordLabel.Parent = entry
+    local cl = Instance.new("TextLabel")
+    cl.Size = UDim2.new(0.6, 0, 0, 10)
+    cl.Position = UDim2.new(0, 12, 0, 24)
+    cl.BackgroundTransparency = 1
+    cl.Text = string.format("X:%.0f Y:%.0f Z:%.0f", pos.X, pos.Y, pos.Z)
+    cl.TextColor3 = Color3.fromRGB(65, 62, 95)
+    cl.TextSize = 8
+    cl.Font = Enum.Font.Gotham
+    cl.TextXAlignment = Enum.TextXAlignment.Left
+    cl.TextTransparency = 1
+    cl.ZIndex = 6
+    cl.Parent = e
 
-	local tpBtn = Instance.new("TextButton")
-	tpBtn.Size = UDim2.new(0, 36, 0, 24)
-	tpBtn.Position = UDim2.new(1, -80, 0.5, -12)
-	tpBtn.BackgroundColor3 = Color3.fromRGB(45, 38, 95)
-	tpBtn.Text = "TP"
-	tpBtn.TextColor3 = Color3.fromRGB(190, 175, 255)
-	tpBtn.TextSize = 10
-	tpBtn.Font = Enum.Font.GothamBold
-	tpBtn.BorderSizePixel = 0
-	tpBtn.AutoButtonColor = false
-	tpBtn.BackgroundTransparency = 1
-	tpBtn.ClipsDescendants = true
-	tpBtn.Parent = entry
-	Instance.new("UICorner", tpBtn).CornerRadius = UDim.new(0, 6)
+    local tp = Instance.new("TextButton")
+    tp.Size = UDim2.new(0, 34, 0, 22)
+    tp.Position = UDim2.new(1, -74, 0.5, -11)
+    tp.BackgroundColor3 = Color3.fromRGB(38, 32, 85)
+    tp.Text = "TP"
+    tp.TextColor3 = Color3.fromRGB(180, 165, 250)
+    tp.TextSize = 10
+    tp.Font = Enum.Font.GothamBold
+    tp.BorderSizePixel = 0
+    tp.AutoButtonColor = false
+    tp.BackgroundTransparency = 1
+    tp.ClipsDescendants = true
+    tp.ZIndex = 6
+    tp.Parent = e
+    Instance.new("UICorner", tp).CornerRadius = UDim.new(0, 6)
 
-	local delBtn = Instance.new("TextButton")
-	delBtn.Size = UDim2.new(0, 34, 0, 24)
-	delBtn.Position = UDim2.new(1, -40, 0.5, -12)
-	delBtn.BackgroundColor3 = Color3.fromRGB(75, 28, 28)
-	delBtn.Text = "✕"
-	delBtn.TextColor3 = Color3.fromRGB(200, 130, 130)
-	delBtn.TextSize = 10
-	delBtn.Font = Enum.Font.GothamBold
-	delBtn.BorderSizePixel = 0
-	delBtn.AutoButtonColor = false
-	delBtn.BackgroundTransparency = 1
-	delBtn.ClipsDescendants = true
-	delBtn.Parent = entry
-	Instance.new("UICorner", delBtn).CornerRadius = UDim.new(0, 6)
+    local dl = Instance.new("TextButton")
+    dl.Size = UDim2.new(0, 32, 0, 22)
+    dl.Position = UDim2.new(1, -36, 0.5, -11)
+    dl.BackgroundColor3 = Color3.fromRGB(68, 24, 24)
+    dl.Text = "✕"
+    dl.TextColor3 = Color3.fromRGB(195, 120, 120)
+    dl.TextSize = 10
+    dl.Font = Enum.Font.GothamBold
+    dl.BorderSizePixel = 0
+    dl.AutoButtonColor = false
+    dl.BackgroundTransparency = 1
+    dl.ClipsDescendants = true
+    dl.ZIndex = 6
+    dl.Parent = e
+    Instance.new("UICorner", dl).CornerRadius = UDim.new(0, 6)
 
-	-- Entrance animation
-	TweenService:Create(entry, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-		Size = UDim2.new(1, -8, 0, 46), BackgroundTransparency = 0
-	}):Play()
-	task.delay(0.15, function() TweenService:Create(accent, TweenInfo.new(0.3), {Size = UDim2.new(0, 3, 0.7, 0)}):Play() end)
-	task.delay(0.2, function()
-		TweenService:Create(nameBtn, TweenInfo.new(0.3), {TextTransparency = 0}):Play()
-		TweenService:Create(coordLabel, TweenInfo.new(0.3), {TextTransparency = 0}):Play()
-	end)
-	task.delay(0.3, function()
-		TweenService:Create(tpBtn, TweenInfo.new(0.2), {BackgroundTransparency = 0}):Play()
-		TweenService:Create(delBtn, TweenInfo.new(0.2), {BackgroundTransparency = 0}):Play()
-		TweenService:Create(es, TweenInfo.new(0.2), {Transparency = 0.4}):Play()
-	end)
+    -- Entrance
+    TweenService:Create(e, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+        Size = UDim2.new(1, -8, 0, 40), BackgroundTransparency = 0
+    }):Play()
+    task.delay(0.15, function() TweenService:Create(accent, TweenInfo.new(0.3), {Size = UDim2.new(0, 3, 0.7, 0)}):Play() end)
+    task.delay(0.2, function()
+        TweenService:Create(nb, TweenInfo.new(0.3), {TextTransparency = 0}):Play()
+        TweenService:Create(cl, TweenInfo.new(0.3), {TextTransparency = 0}):Play()
+    end)
+    task.delay(0.3, function()
+        TweenService:Create(tp, TweenInfo.new(0.2), {BackgroundTransparency = 0}):Play()
+        TweenService:Create(dl, TweenInfo.new(0.2), {BackgroundTransparency = 0}):Play()
+    end)
 
-	nameBtn.MouseEnter:Connect(function()
-		TweenService:Create(nameBtn, tweenFast, {TextColor3 = Color3.fromRGB(180, 140, 255)}):Play()
-		TweenService:Create(accent, tweenFast, {BackgroundColor3 = Color3.fromRGB(170, 120, 255), BackgroundTransparency = 0}):Play()
-	end)
-	nameBtn.MouseLeave:Connect(function()
-		TweenService:Create(nameBtn, tweenFast, {TextColor3 = Color3.fromRGB(200, 195, 230)}):Play()
-		TweenService:Create(accent, tweenFast, {BackgroundColor3 = Color3.fromRGB(120, 80, 220), BackgroundTransparency = 0.3}):Play()
-	end)
-	nameBtn.MouseButton1Click:Connect(function()
-		local cn = name
-		for _, wp in ipairs(waypoints) do if wp.index == index then cn = wp.name; break end end
-		createRipple(entry)
-		openRenameDialog(index, nameBtn, cn)
-	end)
+    nb.MouseEnter:Connect(function()
+        TweenService:Create(nb, tweenFast, {TextColor3 = Color3.fromRGB(170, 130, 255)}):Play()
+        TweenService:Create(accent, tweenFast, {BackgroundColor3 = Color3.fromRGB(160, 110, 255), BackgroundTransparency = 0}):Play()
+    end)
+    nb.MouseLeave:Connect(function()
+        TweenService:Create(nb, tweenFast, {TextColor3 = Color3.fromRGB(190, 185, 225)}):Play()
+        TweenService:Create(accent, tweenFast, {BackgroundColor3 = Color3.fromRGB(110, 70, 210), BackgroundTransparency = 0.3}):Play()
+    end)
+    nb.MouseButton1Click:Connect(function()
+        local cn = name
+        for _, wp in ipairs(waypoints) do if wp.index == idx then cn = wp.name; break end end
+        createRipple(e); openRename(idx, nb, cn)
+    end)
 
-	tpBtn.MouseEnter:Connect(function() TweenService:Create(tpBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(65, 50, 135)}):Play() end)
-	tpBtn.MouseLeave:Connect(function() TweenService:Create(tpBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(45, 38, 95)}):Play() end)
-	delBtn.MouseEnter:Connect(function() TweenService:Create(delBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(115, 38, 38)}):Play() end)
-	delBtn.MouseLeave:Connect(function() TweenService:Create(delBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(75, 28, 28)}):Play() end)
+    tp.MouseEnter:Connect(function() TweenService:Create(tp, tweenFast, {BackgroundColor3 = Color3.fromRGB(55, 42, 125)}):Play() end)
+    tp.MouseLeave:Connect(function() TweenService:Create(tp, tweenFast, {BackgroundColor3 = Color3.fromRGB(38, 32, 85)}):Play() end)
+    dl.MouseEnter:Connect(function() TweenService:Create(dl, tweenFast, {BackgroundColor3 = Color3.fromRGB(105, 32, 32)}):Play() end)
+    dl.MouseLeave:Connect(function() TweenService:Create(dl, tweenFast, {BackgroundColor3 = Color3.fromRGB(68, 24, 24)}):Play() end)
 
-	tpBtn.MouseButton1Click:Connect(function()
-		character = player.Character
-		if character and character:FindFirstChild("HumanoidRootPart") then
-			createRipple(tpBtn)
-			character.HumanoidRootPart.CFrame = CFrame.new(position)
-			TweenService:Create(tpBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(40, 160, 40)}):Play()
-			tpBtn.Text = "✓"
-			task.wait(0.5)
-			TweenService:Create(tpBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(45, 38, 95)}):Play()
-			tpBtn.Text = "TP"
-		end
-	end)
+    tp.MouseButton1Click:Connect(function()
+        character = player.Character
+        if character and character:FindFirstChild("HumanoidRootPart") then
+            createRipple(tp); character.HumanoidRootPart.CFrame = CFrame.new(pos)
+            TweenService:Create(tp, tweenFast, {BackgroundColor3 = Color3.fromRGB(35, 150, 35)}):Play()
+            tp.Text = "✓"; task.wait(0.5)
+            TweenService:Create(tp, tweenFast, {BackgroundColor3 = Color3.fromRGB(38, 32, 85)}):Play()
+            tp.Text = "TP"
+        end
+    end)
 
-	delBtn.MouseButton1Click:Connect(function()
-		for i, wp in ipairs(waypoints) do if wp.index == index then table.remove(waypoints, i); break end end
-		createRipple(delBtn)
-		TweenService:Create(entry, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(60, 20, 20)}):Play()
-		task.wait(0.1)
-		TweenService:Create(entry, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
-			Size = UDim2.new(1, -8, 0, 0), BackgroundTransparency = 1
-		}):Play()
-		task.wait(0.3)
-		entry:Destroy()
-		if #waypoints == 0 then noWaypointsLabel.Visible = true end
-	end)
+    dl.MouseButton1Click:Connect(function()
+        for i, wp in ipairs(waypoints) do if wp.index == idx then table.remove(waypoints, i); break end end
+        -- Clear any keybind assignments referencing this waypoint
+        for _, kb in pairs(keybinds) do
+            if kb.waypointIndex == idx then kb.waypointIndex = nil end
+        end
+        for sid, _ in pairs(keybindSlotFrames) do updateKeybindDisplay(sid) end
+        createRipple(dl)
+        TweenService:Create(e, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(55, 18, 18)}):Play()
+        task.wait(0.1)
+        TweenService:Create(e, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
+            Size = UDim2.new(1, -8, 0, 0), BackgroundTransparency = 1
+        }):Play()
+        task.wait(0.3); e:Destroy()
+        if #waypoints == 0 then noWpLabel.Visible = true end
+    end)
 
-	entry.MouseEnter:Connect(function()
-		TweenService:Create(es, tweenFast, {Color = Color3.fromRGB(90, 70, 150), Transparency = 0}):Play()
-		TweenService:Create(entry, tweenFast, {BackgroundColor3 = Color3.fromRGB(33, 30, 52)}):Play()
-	end)
-	entry.MouseLeave:Connect(function()
-		TweenService:Create(es, tweenFast, {Color = Color3.fromRGB(55, 48, 85), Transparency = 0.4}):Play()
-		TweenService:Create(entry, tweenFast, {BackgroundColor3 = Color3.fromRGB(28, 26, 45)}):Play()
-	end)
-
-	return entry
+    e.MouseEnter:Connect(function()
+        TweenService:Create(es, tweenFast, {Color = Color3.fromRGB(80, 62, 140), Transparency = 0}):Play()
+        TweenService:Create(e, tweenFast, {BackgroundColor3 = Color3.fromRGB(28, 24, 48)}):Play()
+    end)
+    e.MouseLeave:Connect(function()
+        TweenService:Create(es, tweenFast, {Color = Color3.fromRGB(48, 42, 78), Transparency = 0.5}):Play()
+        TweenService:Create(e, tweenFast, {BackgroundColor3 = Color3.fromRGB(22, 20, 40)}):Play()
+    end)
 end
 
-saveWaypointBtn.MouseButton1Click:Connect(function()
-	character = player.Character
-	if character and character:FindFirstChild("HumanoidRootPart") then
-		waypointCounter += 1
-		local pos = character.HumanoidRootPart.Position
-		local wpn = "Waypoint " .. waypointCounter
-		table.insert(waypoints, {name = wpn, position = pos, index = waypointCounter})
-		noWaypointsLabel.Visible = false
-		createRipple(saveWaypointBtn)
-		createWaypointEntry(wpn, pos, waypointCounter)
-		TweenService:Create(saveWaypointBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(30, 95, 30)}):Play()
-		TweenService:Create(saveStroke, tweenFast, {Color = Color3.fromRGB(60, 200, 60)}):Play()
-		saveLabel.Text = "✅  Position Saved!"
-		task.wait(0.7)
-		TweenService:Create(saveWaypointBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(45, 35, 90)}):Play()
-		TweenService:Create(saveStroke, tweenFast, {Color = Color3.fromRGB(90, 65, 170)}):Play()
-		saveLabel.Text = "📌  Save Current Position"
-	end
+saveBtn.MouseButton1Click:Connect(function()
+    character = player.Character
+    if character and character:FindFirstChild("HumanoidRootPart") then
+        waypointCounter += 1
+        local p = character.HumanoidRootPart.Position
+        local n = "Waypoint " .. waypointCounter
+        table.insert(waypoints, {name = n, position = p, index = waypointCounter})
+        noWpLabel.Visible = false
+        createRipple(saveBtn); createWpEntry(n, p, waypointCounter)
+        TweenService:Create(saveBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(25, 85, 25)}):Play()
+        TweenService:Create(saveStroke, tweenFast, {Color = Color3.fromRGB(55, 190, 55)}):Play()
+        saveLabel.Text = "✅  Saved!"; task.wait(0.6)
+        TweenService:Create(saveBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(38, 28, 80)}):Play()
+        TweenService:Create(saveStroke, tweenFast, {Color = Color3.fromRGB(80, 55, 160)}):Play()
+        saveLabel.Text = "📌  Save Current Position"
+    end
 end)
 
-saveWaypointBtn.MouseEnter:Connect(function()
-	TweenService:Create(saveStroke, tweenFast, {Color = Color3.fromRGB(130, 95, 240), Transparency = 0}):Play()
-end)
-saveWaypointBtn.MouseLeave:Connect(function()
-	TweenService:Create(saveStroke, tweenFast, {Color = Color3.fromRGB(90, 65, 170), Transparency = 0.2}):Play()
+saveBtn.MouseEnter:Connect(function() TweenService:Create(saveStroke, tweenFast, {Color = Color3.fromRGB(120, 85, 230), Transparency = 0}):Play() end)
+saveBtn.MouseLeave:Connect(function() TweenService:Create(saveStroke, tweenFast, {Color = Color3.fromRGB(80, 55, 160), Transparency = 0.2}):Play() end)
+
+clearBtn.MouseButton1Click:Connect(function()
+    createRipple(clearBtn); waypoints = {}
+    -- Clear all keybind waypoint assignments
+    for _, kb in pairs(keybinds) do kb.waypointIndex = nil end
+    for sid, _ in pairs(keybindSlotFrames) do updateKeybindDisplay(sid) end
+    local entries = {}
+    for _, c in ipairs(wpScroll:GetChildren()) do if c:IsA("Frame") and c.Name:match("Wp_") then table.insert(entries, c) end end
+    for i, e2 in ipairs(entries) do
+        task.delay(i * 0.04, function()
+            TweenService:Create(e2, TweenInfo.new(0.2), {Size = UDim2.new(1, -8, 0, 0), BackgroundTransparency = 1}):Play()
+            task.wait(0.2); e2:Destroy()
+        end)
+    end
+    task.delay(#entries * 0.04 + 0.3, function() noWpLabel.Visible = true end)
+    TweenService:Create(clearBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(90, 30, 30)}):Play()
+    clearLabel.Text = "🗑️ Cleared!"; task.wait(0.5)
+    TweenService:Create(clearBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(55, 20, 20)}):Play()
+    clearLabel.Text = "🗑️ Clear All"
 end)
 
-clearAllBtn.MouseButton1Click:Connect(function()
-	createRipple(clearAllBtn)
-	waypoints = {}
-	local entries = {}
-	for _, c in ipairs(waypointScroll:GetChildren()) do
-		if c:IsA("Frame") and c.Name:match("Waypoint_") then table.insert(entries, c) end
-	end
-	for i, e in ipairs(entries) do
-		task.delay(i * 0.04, function()
-			TweenService:Create(e, TweenInfo.new(0.2), {Size = UDim2.new(1, -8, 0, 0), BackgroundTransparency = 1}):Play()
-			task.wait(0.2); e:Destroy()
-		end)
-	end
-	task.delay(#entries * 0.04 + 0.3, function() noWaypointsLabel.Visible = true end)
-	TweenService:Create(clearAllBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(100, 35, 35)}):Play()
-	clearLabel.Text = "🗑️  Cleared!"
-	task.wait(0.6)
-	TweenService:Create(clearAllBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(60, 25, 25)}):Play()
-	clearLabel.Text = "🗑️  Clear All Waypoints"
-end)
-
-clearAllBtn.MouseEnter:Connect(function() TweenService:Create(clearStroke, tweenFast, {Color = Color3.fromRGB(160, 55, 55), Transparency = 0}):Play() end)
-clearAllBtn.MouseLeave:Connect(function() TweenService:Create(clearStroke, tweenFast, {Color = Color3.fromRGB(110, 45, 45), Transparency = 0.4}):Play() end)
+clearBtn.MouseEnter:Connect(function() TweenService:Create(clearStroke, tweenFast, {Color = Color3.fromRGB(150, 48, 48), Transparency = 0}):Play() end)
+clearBtn.MouseLeave:Connect(function() TweenService:Create(clearStroke, tweenFast, {Color = Color3.fromRGB(100, 40, 40), Transparency = 0.4}):Play() end)
 
 -- ============================================
--- KEYBIND TAB CONTENT
+-- KEYBIND TAB
 -- ============================================
-local keybindTitle = Instance.new("TextLabel")
-keybindTitle.Size = UDim2.new(1, 0, 0, 25)
-keybindTitle.Position = UDim2.new(0, 0, 0, 5)
-keybindTitle.BackgroundTransparency = 1
-keybindTitle.Text = "⌨️  Keybind Slots  —  Press key to teleport"
-keybindTitle.TextColor3 = Color3.fromRGB(180, 175, 220)
-keybindTitle.TextSize = 12
-keybindTitle.Font = Enum.Font.GothamBold
-keybindTitle.TextXAlignment = Enum.TextXAlignment.Left
-keybindTitle.Parent = keybindContent
+local kbTitle = Instance.new("TextLabel")
+kbTitle.Size = UDim2.new(1, 0, 0, 22)
+kbTitle.Position = UDim2.new(0, 0, 0, 4)
+kbTitle.BackgroundTransparency = 1
+kbTitle.Text = "⌨️  Keybind Slots — Press key to teleport"
+kbTitle.TextColor3 = Color3.fromRGB(170, 165, 215)
+kbTitle.TextSize = 11
+kbTitle.Font = Enum.Font.GothamBold
+kbTitle.TextXAlignment = Enum.TextXAlignment.Left
+kbTitle.ZIndex = 4
+kbTitle.Parent = keybindContent
 
-local keybindSubtitle = Instance.new("TextLabel")
-keybindSubtitle.Size = UDim2.new(1, 0, 0, 16)
-keybindSubtitle.Position = UDim2.new(0, 0, 0, 28)
-keybindSubtitle.BackgroundTransparency = 1
-keybindSubtitle.Text = "Click ⚙️ to assign a waypoint. Double-click waypoint to remove."
-keybindSubtitle.TextColor3 = Color3.fromRGB(100, 95, 130)
-keybindSubtitle.TextSize = 9
-keybindSubtitle.Font = Enum.Font.Gotham
-keybindSubtitle.TextXAlignment = Enum.TextXAlignment.Left
-keybindSubtitle.Parent = keybindContent
+local kbSubtitle = Instance.new("TextLabel")
+kbSubtitle.Size = UDim2.new(1, 0, 0, 14)
+kbSubtitle.Position = UDim2.new(0, 0, 0, 24)
+kbSubtitle.BackgroundTransparency = 1
+kbSubtitle.Text = "Click ⚙️ to assign waypoint. Double-click to unassign."
+kbSubtitle.TextColor3 = Color3.fromRGB(85, 80, 120)
+kbSubtitle.TextSize = 8
+kbSubtitle.Font = Enum.Font.Gotham
+kbSubtitle.TextXAlignment = Enum.TextXAlignment.Left
+kbSubtitle.ZIndex = 4
+kbSubtitle.Parent = keybindContent
 
-local keybindDivider = Instance.new("Frame")
-keybindDivider.Size = UDim2.new(1, 0, 0, 1)
-keybindDivider.Position = UDim2.new(0, 0, 0, 50)
-keybindDivider.BackgroundColor3 = Color3.fromRGB(60, 50, 100)
-keybindDivider.BackgroundTransparency = 0.4
-keybindDivider.BorderSizePixel = 0
-keybindDivider.Parent = keybindContent
+-- Add Keybind button
+local addKbBtn = Instance.new("TextButton")
+addKbBtn.Size = UDim2.new(1, 0, 0, 34)
+addKbBtn.Position = UDim2.new(0, 0, 0, 42)
+addKbBtn.BackgroundColor3 = Color3.fromRGB(30, 50, 35)
+addKbBtn.Text = ""
+addKbBtn.BorderSizePixel = 0
+addKbBtn.AutoButtonColor = false
+addKbBtn.ClipsDescendants = true
+addKbBtn.ZIndex = 4
+addKbBtn.Parent = keybindContent
+Instance.new("UICorner", addKbBtn).CornerRadius = UDim.new(0, 8)
 
-local keybindScroll = Instance.new("ScrollingFrame")
-keybindScroll.Size = UDim2.new(1, 0, 1, -58)
-keybindScroll.Position = UDim2.new(0, 0, 0, 56)
-keybindScroll.BackgroundColor3 = Color3.fromRGB(20, 20, 32)
-keybindScroll.BorderSizePixel = 0
-keybindScroll.ScrollBarThickness = 4
-keybindScroll.ScrollBarImageColor3 = Color3.fromRGB(100, 70, 180)
-keybindScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-keybindScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-keybindScroll.Parent = keybindContent
+local addKbStroke = Instance.new("UIStroke")
+addKbStroke.Color = Color3.fromRGB(50, 100, 55)
+addKbStroke.Thickness = 1
+addKbStroke.Transparency = 0.3
+addKbStroke.Parent = addKbBtn
 
-Instance.new("UICorner", keybindScroll).CornerRadius = UDim.new(0, 8)
+local addKbLabel = Instance.new("TextLabel")
+addKbLabel.Size = UDim2.new(1, 0, 1, 0)
+addKbLabel.BackgroundTransparency = 1
+addKbLabel.Text = "➕  Add Keybind"
+addKbLabel.TextColor3 = Color3.fromRGB(130, 220, 140)
+addKbLabel.TextSize = 12
+addKbLabel.Font = Enum.Font.GothamBold
+addKbLabel.ZIndex = 5
+addKbLabel.Parent = addKbBtn
+
+local kbDivider = Instance.new("Frame")
+kbDivider.Size = UDim2.new(1, 0, 0, 1)
+kbDivider.Position = UDim2.new(0, 0, 0, 82)
+kbDivider.BackgroundColor3 = Color3.fromRGB(50, 42, 90)
+kbDivider.BackgroundTransparency = 0.4
+kbDivider.BorderSizePixel = 0
+kbDivider.ZIndex = 4
+kbDivider.Parent = keybindContent
+
+local kbScroll = Instance.new("ScrollingFrame")
+kbScroll.Size = UDim2.new(1, 0, 1, -90)
+kbScroll.Position = UDim2.new(0, 0, 0, 88)
+kbScroll.BackgroundColor3 = Color3.fromRGB(14, 12, 26)
+kbScroll.BorderSizePixel = 0
+kbScroll.ScrollBarThickness = 3
+kbScroll.ScrollBarImageColor3 = Color3.fromRGB(90, 60, 170)
+kbScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+kbScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+kbScroll.ZIndex = 4
+kbScroll.Parent = keybindContent
+Instance.new("UICorner", kbScroll).CornerRadius = UDim.new(0, 8)
+
 local kbScrollStroke = Instance.new("UIStroke")
-kbScrollStroke.Color = Color3.fromRGB(50, 42, 80)
+kbScrollStroke.Color = Color3.fromRGB(42, 36, 72)
 kbScrollStroke.Thickness = 1
 kbScrollStroke.Transparency = 0.4
-kbScrollStroke.Parent = keybindScroll
+kbScrollStroke.Parent = kbScroll
 
 local kbLayout = Instance.new("UIListLayout")
 kbLayout.SortOrder = Enum.SortOrder.LayoutOrder
-kbLayout.Padding = UDim.new(0, 6)
-kbLayout.Parent = keybindScroll
+kbLayout.Padding = UDim.new(0, 5)
+kbLayout.Parent = kbScroll
 
-local kbPadding = Instance.new("UIPadding")
-kbPadding.PaddingTop = UDim.new(0, 6)
-kbPadding.PaddingBottom = UDim.new(0, 6)
-kbPadding.PaddingLeft = UDim.new(0, 6)
-kbPadding.PaddingRight = UDim.new(0, 6)
-kbPadding.Parent = keybindScroll
+local kbPad = Instance.new("UIPadding")
+kbPad.PaddingTop = UDim.new(0, 5)
+kbPad.PaddingBottom = UDim.new(0, 5)
+kbPad.PaddingLeft = UDim.new(0, 5)
+kbPad.PaddingRight = UDim.new(0, 5)
+kbPad.Parent = kbScroll
+
+local noKbLabel = Instance.new("TextLabel")
+noKbLabel.Name = "NoKb"
+noKbLabel.Size = UDim2.new(1, 0, 0, 45)
+noKbLabel.BackgroundTransparency = 1
+noKbLabel.Text = "No keybinds created yet.\nClick '➕ Add Keybind' above!"
+noKbLabel.TextColor3 = Color3.fromRGB(60, 55, 85)
+noKbLabel.TextSize = 11
+noKbLabel.Font = Enum.Font.Gotham
+noKbLabel.ZIndex = 5
+noKbLabel.Parent = kbScroll
+
+-- ============================================
+-- KEYBIND SLOT HELPERS
+-- ============================================
+local function getWpName(wpIdx)
+    if not wpIdx then return "None" end
+    for _, wp in ipairs(waypoints) do if wp.index == wpIdx then return wp.name end end
+    return "Deleted"
+end
+
+local function getWpPos(wpIdx)
+    if not wpIdx then return nil end
+    for _, wp in ipairs(waypoints) do if wp.index == wpIdx then return wp.position end end
+    return nil
+end
+
+function updateKeybindDisplay(slotId)
+    local slot = keybindSlotFrames[slotId]
+    if not slot or not slot.Parent then return end
+    local kb = keybinds[slotId]
+    if not kb then return end
+
+    local kl = slot:FindFirstChild("KeyLabel")
+    if kl then
+        kl.Text = kb.key and kb.key.Name or "?"
+        kl.TextColor3 = kb.key and Color3.fromRGB(195, 175, 250) or Color3.fromRGB(90, 82, 125)
+    end
+
+    local wl = slot:FindFirstChild("WpLabel")
+    if wl then
+        if kb.waypointIndex then
+            wl.Text = "📍 " .. getWpName(kb.waypointIndex)
+            wl.TextColor3 = Color3.fromRGB(160, 150, 215)
+        else
+            wl.Text = "No waypoint assigned"
+            wl.TextColor3 = Color3.fromRGB(72, 68, 100)
+        end
+    end
+
+    local sd = slot:FindFirstChild("SlotDot")
+    if sd then
+        if kb.key and kb.waypointIndex then
+            TweenService:Create(sd, tweenFast, {BackgroundColor3 = Color3.fromRGB(90, 210, 90)}):Play()
+        elseif kb.key then
+            TweenService:Create(sd, tweenFast, {BackgroundColor3 = Color3.fromRGB(210, 170, 50)}):Play()
+        else
+            TweenService:Create(sd, tweenFast, {BackgroundColor3 = Color3.fromRGB(70, 68, 70)}):Play()
+        end
+    end
+end
 
 -- ============================================
 -- KEYBIND SLOT CREATION
 -- ============================================
-local keybindSlotFrames = {}
-
-local function getWaypointName(wpIndex)
-	if not wpIndex then return "None" end
-	for _, wp in ipairs(waypoints) do
-		if wp.index == wpIndex then return wp.name end
-	end
-	return "Deleted"
-end
-
-local function getWaypointPosition(wpIndex)
-	if not wpIndex then return nil end
-	for _, wp in ipairs(waypoints) do
-		if wp.index == wpIndex then return wp.position end
-	end
-	return nil
-end
-
-local function updateKeybindSlotDisplay(slotId)
-	local slot = keybindSlotFrames[slotId]
-	if not slot then return end
-	local kb = keybinds[slotId]
-
-	-- Update key display
-	local keyLabel = slot:FindFirstChild("KeyLabel")
-	if keyLabel then
-		if kb.key then
-			keyLabel.Text = kb.key.Name
-			keyLabel.TextColor3 = Color3.fromRGB(200, 180, 255)
-		else
-			keyLabel.Text = "?"
-			keyLabel.TextColor3 = Color3.fromRGB(100, 90, 130)
-		end
-	end
-
-	-- Update waypoint display
-	local wpLabel = slot:FindFirstChild("WaypointLabel")
-	if wpLabel then
-		if kb.waypointIndex then
-			local name = getWaypointName(kb.waypointIndex)
-			wpLabel.Text = "📍 " .. name
-			wpLabel.TextColor3 = Color3.fromRGB(170, 160, 220)
-		else
-			wpLabel.Text = "No waypoint assigned"
-			wpLabel.TextColor3 = Color3.fromRGB(80, 75, 110)
-		end
-	end
-
-	-- Update status dot
-	local sDot = slot:FindFirstChild("SlotDot")
-	if sDot then
-		if kb.key and kb.waypointIndex then
-			TweenService:Create(sDot, tweenFast, {BackgroundColor3 = Color3.fromRGB(100, 220, 100)}):Play()
-		elseif kb.key then
-			TweenService:Create(sDot, tweenFast, {BackgroundColor3 = Color3.fromRGB(220, 180, 60)}):Play()
-		else
-			TweenService:Create(sDot, tweenFast, {BackgroundColor3 = Color3.fromRGB(80, 80, 80)}):Play()
-		end
-	end
-end
-
 local function createKeybindSlot(slotId)
-	keybinds[slotId] = {key = nil, waypointIndex = nil, slotId = slotId}
+    keybinds[slotId] = {key = nil, waypointIndex = nil, slotId = slotId}
+    keybindSettingsOpen[slotId] = false
 
-	local slot = Instance.new("Frame")
-	slot.Name = "KeybindSlot_" .. slotId
-	slot.Size = UDim2.new(1, -12, 0, 0)
-	slot.BackgroundColor3 = Color3.fromRGB(26, 24, 42)
-	slot.BackgroundTransparency = 0.3
-	slot.BorderSizePixel = 0
-	slot.LayoutOrder = slotId
-	slot.ClipsDescendants = true
-	slot.Parent = keybindScroll
+    local slot = Instance.new("Frame")
+    slot.Name = "KbSlot_" .. slotId
+    slot.Size = UDim2.new(1, -10, 0, 0)
+    slot.BackgroundColor3 = Color3.fromRGB(20, 18, 38)
+    slot.BackgroundTransparency = 0.3
+    slot.BorderSizePixel = 0
+    slot.LayoutOrder = slotId
+    slot.ClipsDescendants = true
+    slot.ZIndex = 5
+    slot.Parent = kbScroll
+    Instance.new("UICorner", slot).CornerRadius = UDim.new(0, 10)
 
-	Instance.new("UICorner", slot).CornerRadius = UDim.new(0, 10)
-	local slotStroke = Instance.new("UIStroke")
-	slotStroke.Color = Color3.fromRGB(50, 45, 80)
-	slotStroke.Thickness = 1
-	slotStroke.Transparency = 0.4
-	slotStroke.Parent = slot
+    local slotStroke = Instance.new("UIStroke")
+    slotStroke.Color = Color3.fromRGB(44, 38, 72)
+    slotStroke.Thickness = 1
+    slotStroke.Transparency = 0.4
+    slotStroke.Parent = slot
 
-	-- Slot number badge
-	local slotBadge = Instance.new("TextLabel")
-	slotBadge.Name = "SlotBadge"
-	slotBadge.Size = UDim2.new(0, 22, 0, 22)
-	slotBadge.Position = UDim2.new(0, 8, 0, 10)
-	slotBadge.BackgroundColor3 = Color3.fromRGB(55, 40, 100)
-	slotBadge.Text = tostring(slotId)
-	slotBadge.TextColor3 = Color3.fromRGB(180, 160, 240)
-	slotBadge.TextSize = 11
-	slotBadge.Font = Enum.Font.GothamBold
-	slotBadge.Parent = slot
-	Instance.new("UICorner", slotBadge).CornerRadius = UDim.new(0, 6)
+    -- Slot badge
+    local badge = Instance.new("TextLabel")
+    badge.Size = UDim2.new(0, 20, 0, 20)
+    badge.Position = UDim2.new(0, 7, 0, 9)
+    badge.BackgroundColor3 = Color3.fromRGB(48, 35, 92)
+    badge.Text = tostring(slotId)
+    badge.TextColor3 = Color3.fromRGB(170, 150, 235)
+    badge.TextSize = 10
+    badge.Font = Enum.Font.GothamBold
+    badge.ZIndex = 6
+    badge.Parent = slot
+    Instance.new("UICorner", badge).CornerRadius = UDim.new(0, 5)
 
-	-- Status dot
-	local slotDot = Instance.new("Frame")
-	slotDot.Name = "SlotDot"
-	slotDot.Size = UDim2.new(0, 6, 0, 6)
-	slotDot.Position = UDim2.new(0, 26, 0, 8)
-	slotDot.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
-	slotDot.BorderSizePixel = 0
-	slotDot.Parent = slot
-	Instance.new("UICorner", slotDot).CornerRadius = UDim.new(1, 0)
+    -- Status dot
+    local sDot = Instance.new("Frame")
+    sDot.Name = "SlotDot"
+    sDot.Size = UDim2.new(0, 6, 0, 6)
+    sDot.Position = UDim2.new(0, 24, 0, 7)
+    sDot.BackgroundColor3 = Color3.fromRGB(70, 68, 70)
+    sDot.BorderSizePixel = 0
+    sDot.ZIndex = 7
+    sDot.Parent = slot
+    Instance.new("UICorner", sDot).CornerRadius = UDim.new(1, 0)
 
-	-- Key button (press to set key)
-	local keyBtn = Instance.new("TextButton")
-	keyBtn.Name = "KeyBtn"
-	keyBtn.Size = UDim2.new(0, 50, 0, 28)
-	keyBtn.Position = UDim2.new(0, 38, 0, 7)
-	keyBtn.BackgroundColor3 = Color3.fromRGB(40, 35, 65)
-	keyBtn.Text = ""
-	keyBtn.BorderSizePixel = 0
-	keyBtn.AutoButtonColor = false
-	keyBtn.ClipsDescendants = true
-	keyBtn.Parent = slot
-	Instance.new("UICorner", keyBtn).CornerRadius = UDim.new(0, 8)
+    -- Key button
+    local keyBtn = Instance.new("TextButton")
+    keyBtn.Name = "KeyBtn"
+    keyBtn.Size = UDim2.new(0, 48, 0, 26)
+    keyBtn.Position = UDim2.new(0, 32, 0, 6)
+    keyBtn.BackgroundColor3 = Color3.fromRGB(35, 30, 58)
+    keyBtn.Text = ""
+    keyBtn.BorderSizePixel = 0
+    keyBtn.AutoButtonColor = false
+    keyBtn.ClipsDescendants = true
+    keyBtn.ZIndex = 6
+    keyBtn.Parent = slot
+    Instance.new("UICorner", keyBtn).CornerRadius = UDim.new(0, 7)
 
-	local keyBtnStroke = Instance.new("UIStroke")
-	keyBtnStroke.Color = Color3.fromRGB(70, 60, 120)
-	keyBtnStroke.Thickness = 1
-	keyBtnStroke.Transparency = 0.3
-	keyBtnStroke.Parent = keyBtn
+    local kbStroke = Instance.new("UIStroke")
+    kbStroke.Color = Color3.fromRGB(62, 52, 110)
+    kbStroke.Thickness = 1
+    kbStroke.Transparency = 0.3
+    kbStroke.Parent = keyBtn
 
-	local keyLabel = Instance.new("TextLabel")
-	keyLabel.Name = "KeyLabel"
-	keyLabel.Size = UDim2.new(1, 0, 1, 0)
-	keyLabel.BackgroundTransparency = 1
-	keyLabel.Text = "?"
-	keyLabel.TextColor3 = Color3.fromRGB(100, 90, 130)
-	keyLabel.TextSize = 13
-	keyLabel.Font = Enum.Font.GothamBold
-	keyLabel.Parent = keyBtn
+    local keyLabel = Instance.new("TextLabel")
+    keyLabel.Name = "KeyLabel"
+    keyLabel.Size = UDim2.new(1, 0, 1, 0)
+    keyLabel.BackgroundTransparency = 1
+    keyLabel.Text = "?"
+    keyLabel.TextColor3 = Color3.fromRGB(90, 82, 125)
+    keyLabel.TextSize = 12
+    keyLabel.Font = Enum.Font.GothamBold
+    keyLabel.ZIndex = 7
+    keyLabel.Parent = keyBtn
 
-	-- Arrow
-	local arrow = Instance.new("TextLabel")
-	arrow.Size = UDim2.new(0, 20, 0, 28)
-	arrow.Position = UDim2.new(0, 92, 0, 7)
-	arrow.BackgroundTransparency = 1
-	arrow.Text = "→"
-	arrow.TextColor3 = Color3.fromRGB(80, 70, 120)
-	arrow.TextSize = 14
-	arrow.Font = Enum.Font.GothamBold
-	arrow.Parent = slot
+    -- Arrow
+    local arrow = Instance.new("TextLabel")
+    arrow.Size = UDim2.new(0, 16, 0, 26)
+    arrow.Position = UDim2.new(0, 84, 0, 6)
+    arrow.BackgroundTransparency = 1
+    arrow.Text = "→"
+    arrow.TextColor3 = Color3.fromRGB(70, 62, 110)
+    arrow.TextSize = 12
+    arrow.Font = Enum.Font.GothamBold
+    arrow.ZIndex = 6
+    arrow.Parent = slot
 
-	-- Waypoint label
-	local wpLabel = Instance.new("TextLabel")
-	wpLabel.Name = "WaypointLabel"
-	wpLabel.Size = UDim2.new(1, -168, 0, 28)
-	wpLabel.Position = UDim2.new(0, 115, 0, 7)
-	wpLabel.BackgroundTransparency = 1
-	wpLabel.Text = "No waypoint assigned"
-	wpLabel.TextColor3 = Color3.fromRGB(80, 75, 110)
-	wpLabel.TextSize = 11
-	wpLabel.Font = Enum.Font.GothamMedium
-	wpLabel.TextXAlignment = Enum.TextXAlignment.Left
-	wpLabel.TextTruncate = Enum.TextTruncate.AtEnd
-	wpLabel.Parent = slot
+    -- Waypoint label
+    local wpLabel = Instance.new("TextLabel")
+    wpLabel.Name = "WpLabel"
+    wpLabel.Size = UDim2.new(1, -185, 0, 26)
+    wpLabel.Position = UDim2.new(0, 103, 0, 6)
+    wpLabel.BackgroundTransparency = 1
+    wpLabel.Text = "No waypoint assigned"
+    wpLabel.TextColor3 = Color3.fromRGB(72, 68, 100)
+    wpLabel.TextSize = 10
+    wpLabel.Font = Enum.Font.GothamMedium
+    wpLabel.TextXAlignment = Enum.TextXAlignment.Left
+    wpLabel.TextTruncate = Enum.TextTruncate.AtEnd
+    wpLabel.ZIndex = 6
+    wpLabel.Parent = slot
 
-	-- Settings gear button
-	local gearBtn = Instance.new("TextButton")
-	gearBtn.Name = "GearBtn"
-	gearBtn.Size = UDim2.new(0, 28, 0, 28)
-	gearBtn.Position = UDim2.new(1, -36, 0, 7)
-	gearBtn.BackgroundColor3 = Color3.fromRGB(45, 40, 75)
-	gearBtn.Text = "⚙️"
-	gearBtn.TextSize = 14
-	gearBtn.BorderSizePixel = 0
-	gearBtn.AutoButtonColor = false
-	gearBtn.Parent = slot
-	Instance.new("UICorner", gearBtn).CornerRadius = UDim.new(0, 7)
+    -- Gear button
+    local gearBtn = Instance.new("TextButton")
+    gearBtn.Name = "GearBtn"
+    gearBtn.Size = UDim2.new(0, 26, 0, 26)
+    gearBtn.Position = UDim2.new(1, -62, 0, 6)
+    gearBtn.BackgroundColor3 = Color3.fromRGB(38, 34, 68)
+    gearBtn.Text = "⚙️"
+    gearBtn.TextSize = 13
+    gearBtn.BorderSizePixel = 0
+    gearBtn.AutoButtonColor = false
+    gearBtn.ZIndex = 6
+    gearBtn.Parent = slot
+    Instance.new("UICorner", gearBtn).CornerRadius = UDim.new(0, 6)
 
-	local gearStroke = Instance.new("UIStroke")
-	gearStroke.Color = Color3.fromRGB(70, 60, 120)
-	gearStroke.Thickness = 1
-	gearStroke.Transparency = 0.4
-	gearStroke.Parent = gearBtn
+    local gearStroke = Instance.new("UIStroke")
+    gearStroke.Color = Color3.fromRGB(62, 52, 110)
+    gearStroke.Thickness = 1
+    gearStroke.Transparency = 0.4
+    gearStroke.Parent = gearBtn
 
-	-- Settings panel (expandable under the main row)
-	local settingsPanel = Instance.new("Frame")
-	settingsPanel.Name = "SettingsPanel"
-	settingsPanel.Size = UDim2.new(1, -16, 0, 0)
-	settingsPanel.Position = UDim2.new(0, 8, 0, 42)
-	settingsPanel.BackgroundColor3 = Color3.fromRGB(22, 20, 36)
-	settingsPanel.BorderSizePixel = 0
-	settingsPanel.ClipsDescendants = true
-	settingsPanel.Visible = false
-	settingsPanel.Parent = slot
-	Instance.new("UICorner", settingsPanel).CornerRadius = UDim.new(0, 8)
+    -- Delete keybind button
+    local delKbBtn = Instance.new("TextButton")
+    delKbBtn.Name = "DelKbBtn"
+    delKbBtn.Size = UDim2.new(0, 26, 0, 26)
+    delKbBtn.Position = UDim2.new(1, -32, 0, 6)
+    delKbBtn.BackgroundColor3 = Color3.fromRGB(60, 22, 22)
+    delKbBtn.Text = "🗑️"
+    delKbBtn.TextSize = 11
+    delKbBtn.BorderSizePixel = 0
+    delKbBtn.AutoButtonColor = false
+    delKbBtn.ZIndex = 6
+    delKbBtn.Parent = slot
+    Instance.new("UICorner", delKbBtn).CornerRadius = UDim.new(0, 6)
 
-	local settingsPanelStroke = Instance.new("UIStroke")
-	settingsPanelStroke.Color = Color3.fromRGB(55, 48, 90)
-	settingsPanelStroke.Thickness = 1
-	settingsPanelStroke.Transparency = 0.4
-	settingsPanelStroke.Parent = settingsPanel
+    local delKbStroke = Instance.new("UIStroke")
+    delKbStroke.Color = Color3.fromRGB(100, 38, 38)
+    delKbStroke.Thickness = 1
+    delKbStroke.Transparency = 0.5
+    delKbStroke.Parent = delKbBtn
 
-	-- Settings title
-	local settingsTitle = Instance.new("TextLabel")
-	settingsTitle.Size = UDim2.new(1, 0, 0, 22)
-	settingsTitle.Position = UDim2.new(0, 8, 0, 6)
-	settingsTitle.BackgroundTransparency = 1
-	settingsTitle.Text = "Select Waypoint:"
-	settingsTitle.TextColor3 = Color3.fromRGB(140, 130, 180)
-	settingsTitle.TextSize = 10
-	settingsTitle.Font = Enum.Font.GothamBold
-	settingsTitle.TextXAlignment = Enum.TextXAlignment.Left
-	settingsTitle.Parent = settingsPanel
+    -- Settings panel
+    local settingsPanel = Instance.new("Frame")
+    settingsPanel.Name = "Settings"
+    settingsPanel.Size = UDim2.new(1, -14, 0, 0)
+    settingsPanel.Position = UDim2.new(0, 7, 0, 38)
+    settingsPanel.BackgroundColor3 = Color3.fromRGB(16, 14, 32)
+    settingsPanel.BorderSizePixel = 0
+    settingsPanel.ClipsDescendants = true
+    settingsPanel.Visible = false
+    settingsPanel.ZIndex = 6
+    settingsPanel.Parent = slot
+    Instance.new("UICorner", settingsPanel).CornerRadius = UDim.new(0, 7)
 
-	-- Waypoint buttons container
-	local wpBtnContainer = Instance.new("Frame")
-	wpBtnContainer.Name = "WpBtnContainer"
-	wpBtnContainer.Size = UDim2.new(1, -16, 0, 0)
-	wpBtnContainer.Position = UDim2.new(0, 8, 0, 30)
-	wpBtnContainer.BackgroundTransparency = 1
-	wpBtnContainer.AutomaticSize = Enum.AutomaticSize.Y
-	wpBtnContainer.Parent = settingsPanel
+    local spStroke = Instance.new("UIStroke")
+    spStroke.Color = Color3.fromRGB(48, 40, 82)
+    spStroke.Thickness = 1
+    spStroke.Transparency = 0.4
+    spStroke.Parent = settingsPanel
 
-	local wpBtnLayout = Instance.new("UIGridLayout")
-	wpBtnLayout.CellSize = UDim2.new(0.2, -5, 0, 32)
-	wpBtnLayout.CellPadding = UDim2.new(0, 4, 0, 4)
-	wpBtnLayout.SortOrder = Enum.SortOrder.LayoutOrder
-	wpBtnLayout.FillDirection = Enum.FillDirection.Horizontal
-	wpBtnLayout.Parent = wpBtnContainer
+    local spTitle = Instance.new("TextLabel")
+    spTitle.Size = UDim2.new(1, 0, 0, 20)
+    spTitle.Position = UDim2.new(0, 7, 0, 4)
+    spTitle.BackgroundTransparency = 1
+    spTitle.Text = "Select Waypoint:"
+    spTitle.TextColor3 = Color3.fromRGB(130, 120, 172)
+    spTitle.TextSize = 9
+    spTitle.Font = Enum.Font.GothamBold
+    spTitle.TextXAlignment = Enum.TextXAlignment.Left
+    spTitle.ZIndex = 7
+    spTitle.Parent = settingsPanel
 
-	keybindSettingsOpen[slotId] = false
+    local wpBtnCont = Instance.new("Frame")
+    wpBtnCont.Name = "WpBtns"
+    wpBtnCont.Size = UDim2.new(1, -14, 0, 0)
+    wpBtnCont.Position = UDim2.new(0, 7, 0, 26)
+    wpBtnCont.BackgroundTransparency = 1
+    wpBtnCont.AutomaticSize = Enum.AutomaticSize.Y
+    wpBtnCont.ZIndex = 7
+    wpBtnCont.Parent = settingsPanel
 
-	local function refreshWaypointButtons()
-		for _, c in ipairs(wpBtnContainer:GetChildren()) do
-			if c:IsA("TextButton") then c:Destroy() end
-		end
+    local wpGrid = Instance.new("UIGridLayout")
+    wpGrid.CellSize = UDim2.new(0.2, -4, 0, 30)
+    wpGrid.CellPadding = UDim2.new(0, 3, 0, 3)
+    wpGrid.SortOrder = Enum.SortOrder.LayoutOrder
+    wpGrid.Parent = wpBtnCont
 
-		if #waypoints == 0 then
-			local noWpBtn = Instance.new("TextButton")
-			noWpBtn.Size = UDim2.new(1, 0, 0, 32)
-			noWpBtn.BackgroundColor3 = Color3.fromRGB(30, 28, 48)
-			noWpBtn.Text = "No waypoints available"
-			noWpBtn.TextColor3 = Color3.fromRGB(80, 75, 110)
-			noWpBtn.TextSize = 10
-			noWpBtn.Font = Enum.Font.Gotham
-			noWpBtn.BorderSizePixel = 0
-			noWpBtn.AutoButtonColor = false
-			noWpBtn.Parent = wpBtnContainer
-			Instance.new("UICorner", noWpBtn).CornerRadius = UDim.new(0, 6)
-			return
-		end
+    local function refreshWpButtons()
+        for _, c in ipairs(wpBtnCont:GetChildren()) do if c:IsA("TextButton") then c:Destroy() end end
 
-		for i, wp in ipairs(waypoints) do
-			local wpBtn = Instance.new("TextButton")
-			wpBtn.Name = "WpBtn_" .. wp.index
-			wpBtn.LayoutOrder = i
-			wpBtn.BackgroundColor3 = (keybinds[slotId].waypointIndex == wp.index) 
-				and Color3.fromRGB(60, 45, 130) or Color3.fromRGB(35, 32, 58)
-			wpBtn.Text = ""
-			wpBtn.BorderSizePixel = 0
-			wpBtn.AutoButtonColor = false
-			wpBtn.ClipsDescendants = true
-			wpBtn.Parent = wpBtnContainer
-			Instance.new("UICorner", wpBtn).CornerRadius = UDim.new(0, 6)
+        if #waypoints == 0 then
+            local noBtn = Instance.new("TextButton")
+            noBtn.Size = UDim2.new(1, 0, 0, 30)
+            noBtn.BackgroundColor3 = Color3.fromRGB(25, 22, 44)
+            noBtn.Text = "No waypoints"
+            noBtn.TextColor3 = Color3.fromRGB(72, 68, 100)
+            noBtn.TextSize = 9
+            noBtn.Font = Enum.Font.Gotham
+            noBtn.BorderSizePixel = 0
+            noBtn.AutoButtonColor = false
+            noBtn.ZIndex = 8
+            noBtn.Parent = wpBtnCont
+            Instance.new("UICorner", noBtn).CornerRadius = UDim.new(0, 5)
+            return
+        end
 
-			local wpBtnStroke = Instance.new("UIStroke")
-			wpBtnStroke.Color = (keybinds[slotId].waypointIndex == wp.index) 
-				and Color3.fromRGB(110, 85, 200) or Color3.fromRGB(55, 50, 85)
-			wpBtnStroke.Thickness = 1
-			wpBtnStroke.Transparency = 0.3
-			wpBtnStroke.Parent = wpBtn
+        for i, wp in ipairs(waypoints) do
+            local selected = keybinds[slotId] and keybinds[slotId].waypointIndex == wp.index
+            local wb = Instance.new("TextButton")
+            wb.Name = "WB_" .. wp.index
+            wb.LayoutOrder = i
+            wb.BackgroundColor3 = selected and Color3.fromRGB(52, 38, 120) or Color3.fromRGB(28, 25, 52)
+            wb.Text = ""
+            wb.BorderSizePixel = 0
+            wb.AutoButtonColor = false
+            wb.ClipsDescendants = true
+            wb.ZIndex = 8
+            wb.Parent = wpBtnCont
+            Instance.new("UICorner", wb).CornerRadius = UDim.new(0, 5)
 
-			-- Question mark or waypoint number
-			local btnLabel = Instance.new("TextLabel")
-			btnLabel.Size = UDim2.new(1, 0, 0, 16)
-			btnLabel.Position = UDim2.new(0, 0, 0, 2)
-			btnLabel.BackgroundTransparency = 1
-			btnLabel.Text = (keybinds[slotId].waypointIndex == wp.index) and "✓" or tostring(i)
-			btnLabel.TextColor3 = (keybinds[slotId].waypointIndex == wp.index) 
-				and Color3.fromRGB(140, 255, 140) or Color3.fromRGB(160, 150, 210)
-			btnLabel.TextSize = 12
-			btnLabel.Font = Enum.Font.GothamBold
-			btnLabel.Parent = wpBtn
+            local wbStroke = Instance.new("UIStroke")
+            wbStroke.Color = selected and Color3.fromRGB(100, 75, 192) or Color3.fromRGB(48, 42, 78)
+            wbStroke.Thickness = 1
+            wbStroke.Transparency = 0.3
+            wbStroke.Parent = wb
 
-			local btnName = Instance.new("TextLabel")
-			btnName.Size = UDim2.new(1, -4, 0, 10)
-			btnName.Position = UDim2.new(0, 2, 0, 18)
-			btnName.BackgroundTransparency = 1
-			btnName.Text = wp.name
-			btnName.TextColor3 = Color3.fromRGB(100, 95, 140)
-			btnName.TextSize = 7
-			btnName.Font = Enum.Font.Gotham
-			btnName.TextTruncate = Enum.TextTruncate.AtEnd
-			btnName.Parent = wpBtn
+            local wbNum = Instance.new("TextLabel")
+            wbNum.Size = UDim2.new(1, 0, 0, 14)
+            wbNum.Position = UDim2.new(0, 0, 0, 2)
+            wbNum.BackgroundTransparency = 1
+            wbNum.Text = selected and "✓" or tostring(i)
+            wbNum.TextColor3 = selected and Color3.fromRGB(130, 245, 130) or Color3.fromRGB(150, 140, 205)
+            wbNum.TextSize = 11
+            wbNum.Font = Enum.Font.GothamBold
+            wbNum.ZIndex = 9
+            wbNum.Parent = wb
 
-			local lastClickTime = 0
+            local wbName = Instance.new("TextLabel")
+            wbName.Size = UDim2.new(1, -4, 0, 10)
+            wbName.Position = UDim2.new(0, 2, 0, 16)
+            wbName.BackgroundTransparency = 1
+            wbName.Text = wp.name
+            wbName.TextColor3 = Color3.fromRGB(90, 85, 130)
+            wbName.TextSize = 7
+            wbName.Font = Enum.Font.Gotham
+            wbName.TextTruncate = Enum.TextTruncate.AtEnd
+            wbName.ZIndex = 9
+            wbName.Parent = wb
 
-			wpBtn.MouseButton1Click:Connect(function()
-				local now = tick()
-				if keybinds[slotId].waypointIndex == wp.index and (now - lastClickTime) < 0.4 then
-					-- Double click -> remove assignment
-					keybinds[slotId].waypointIndex = nil
-					createRipple(wpBtn)
+            local lastClick = 0
+            wb.MouseButton1Click:Connect(function()
+                local now = tick()
+                if keybinds[slotId].waypointIndex == wp.index and (now - lastClick) < 0.4 then
+                    keybinds[slotId].waypointIndex = nil
+                    createRipple(wb)
+                    TweenService:Create(wb, tweenFast, {BackgroundColor3 = Color3.fromRGB(70, 25, 25)}):Play()
+                    task.wait(0.15)
+                    updateKeybindDisplay(slotId); refreshWpButtons()
+                    TweenService:Create(slot, tweenFast, {BackgroundColor3 = Color3.fromRGB(42, 20, 20)}):Play()
+                    task.wait(0.2)
+                    TweenService:Create(slot, tweenFast, {BackgroundColor3 = Color3.fromRGB(20, 18, 38)}):Play()
+                else
+                    keybinds[slotId].waypointIndex = wp.index
+                    createRipple(wb)
+                    updateKeybindDisplay(slotId); refreshWpButtons()
+                    TweenService:Create(slot, tweenFast, {BackgroundColor3 = Color3.fromRGB(22, 42, 22)}):Play()
+                    task.wait(0.2)
+                    TweenService:Create(slot, tweenFast, {BackgroundColor3 = Color3.fromRGB(20, 18, 38)}):Play()
+                end
+                lastClick = now
+            end)
 
-					TweenService:Create(wpBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(80, 30, 30)}):Play()
-					task.wait(0.15)
+            wb.MouseEnter:Connect(function()
+                if keybinds[slotId].waypointIndex ~= wp.index then
+                    TweenService:Create(wb, tweenFast, {BackgroundColor3 = Color3.fromRGB(38, 34, 68)}):Play()
+                    TweenService:Create(wbStroke, tweenFast, {Color = Color3.fromRGB(82, 68, 150)}):Play()
+                end
+            end)
+            wb.MouseLeave:Connect(function()
+                if keybinds[slotId].waypointIndex ~= wp.index then
+                    TweenService:Create(wb, tweenFast, {BackgroundColor3 = Color3.fromRGB(28, 25, 52)}):Play()
+                    TweenService:Create(wbStroke, tweenFast, {Color = Color3.fromRGB(48, 42, 78)}):Play()
+                end
+            end)
+        end
 
-					updateKeybindSlotDisplay(slotId)
-					refreshWaypointButtons()
+        task.wait()
+        local rows = math.max(1, math.ceil(math.max(1, #waypoints) / 5))
+        local contentH = 32 + rows * 33
+        if keybindSettingsOpen[slotId] then
+            TweenService:Create(settingsPanel, tweenInfo, {Size = UDim2.new(1, -14, 0, contentH)}):Play()
+            TweenService:Create(slot, tweenInfo, {Size = UDim2.new(1, -10, 0, 38 + contentH + 6)}):Play()
+        end
+    end
 
-					-- Flash feedback
-					TweenService:Create(slot, tweenFast, {BackgroundColor3 = Color3.fromRGB(50, 25, 25)}):Play()
-					task.wait(0.2)
-					TweenService:Create(slot, tweenFast, {BackgroundColor3 = Color3.fromRGB(26, 24, 42)}):Play()
-				else
-					-- Single click -> assign
-					keybinds[slotId].waypointIndex = wp.index
-					createRipple(wpBtn)
+    -- Gear toggle
+    gearBtn.MouseButton1Click:Connect(function()
+        keybindSettingsOpen[slotId] = not keybindSettingsOpen[slotId]
+        createRipple(gearBtn)
+        if keybindSettingsOpen[slotId] then
+            settingsPanel.Visible = true; refreshWpButtons()
+            local rows = math.max(1, math.ceil(math.max(1, #waypoints) / 5))
+            local contentH = 32 + rows * 33
+            TweenService:Create(settingsPanel, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+                Size = UDim2.new(1, -14, 0, contentH)
+            }):Play()
+            TweenService:Create(slot, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+                Size = UDim2.new(1, -10, 0, 38 + contentH + 6)
+            }):Play()
+            TweenService:Create(gearBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(55, 42, 100)}):Play()
+            TweenService:Create(gearBtn, TweenInfo.new(0.3), {Rotation = 90}):Play()
+        else
+            TweenService:Create(settingsPanel, TweenInfo.new(0.25, Enum.EasingStyle.Quint), {Size = UDim2.new(1, -14, 0, 0)}):Play()
+            TweenService:Create(slot, TweenInfo.new(0.25, Enum.EasingStyle.Quint), {Size = UDim2.new(1, -10, 0, 38)}):Play()
+            TweenService:Create(gearBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(38, 34, 68)}):Play()
+            TweenService:Create(gearBtn, TweenInfo.new(0.3), {Rotation = 0}):Play()
+            task.delay(0.25, function() settingsPanel.Visible = false end)
+        end
+    end)
 
-					updateKeybindSlotDisplay(slotId)
-					refreshWaypointButtons()
+    -- Key button
+    keyBtn.MouseButton1Click:Connect(function()
+        createRipple(keyBtn)
+        if listeningForKey == slotId then
+            listeningForKey = nil
+            updateKeybindDisplay(slotId)
+            TweenService:Create(kbStroke, tweenFast, {Color = Color3.fromRGB(62, 52, 110)}):Play()
+            TweenService:Create(keyBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(35, 30, 58)}):Play()
+            return
+        end
+        listeningForKey = slotId
+        keyLabel.Text = "..."
+        keyLabel.TextColor3 = Color3.fromRGB(250, 195, 90)
+        TweenService:Create(kbStroke, tweenFast, {Color = Color3.fromRGB(195, 155, 55)}):Play()
+        TweenService:Create(keyBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(55, 45, 25)}):Play()
+        task.spawn(function()
+            while listeningForKey == slotId do
+                if not keyLabel or not keyLabel.Parent then break end
+                TweenService:Create(keyLabel, TweenInfo.new(0.4), {TextTransparency = 0.4}):Play()
+                task.wait(0.4)
+                if listeningForKey ~= slotId then break end
+                TweenService:Create(keyLabel, TweenInfo.new(0.4), {TextTransparency = 0}):Play()
+                task.wait(0.4)
+            end
+            if keyLabel and keyLabel.Parent then keyLabel.TextTransparency = 0 end
+        end)
+    end)
 
-					-- Flash feedback
-					TweenService:Create(slot, tweenFast, {BackgroundColor3 = Color3.fromRGB(30, 50, 30)}):Play()
-					task.wait(0.2)
-					TweenService:Create(slot, tweenFast, {BackgroundColor3 = Color3.fromRGB(26, 24, 42)}):Play()
-				end
-				lastClickTime = now
-			end)
+    -- Delete keybind
+    delKbBtn.MouseButton1Click:Connect(function()
+        createRipple(delKbBtn)
+        if listeningForKey == slotId then listeningForKey = nil end
+        keybinds[slotId] = nil
+        keybindSettingsOpen[slotId] = nil
+        keybindSlotFrames[slotId] = nil
 
-			wpBtn.MouseEnter:Connect(function()
-				if keybinds[slotId].waypointIndex ~= wp.index then
-					TweenService:Create(wpBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(45, 40, 75)}):Play()
-					TweenService:Create(wpBtnStroke, tweenFast, {Color = Color3.fromRGB(90, 75, 160)}):Play()
-				end
-			end)
-			wpBtn.MouseLeave:Connect(function()
-				if keybinds[slotId].waypointIndex ~= wp.index then
-					TweenService:Create(wpBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(35, 32, 58)}):Play()
-					TweenService:Create(wpBtnStroke, tweenFast, {Color = Color3.fromRGB(55, 50, 85)}):Play()
-				end
-			end)
-		end
+        TweenService:Create(slot, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(55, 18, 18)}):Play()
+        task.wait(0.1)
+        TweenService:Create(slot, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
+            Size = UDim2.new(1, -10, 0, 0), BackgroundTransparency = 1
+        }):Play()
+        task.wait(0.3); slot:Destroy()
 
-		-- Recalculate settings panel height
-		task.wait()
-		local rows = math.ceil(#waypoints / 5)
-		local contentHeight = 36 + rows * 36
-		if keybindSettingsOpen[slotId] then
-			TweenService:Create(settingsPanel, tweenInfo, {Size = UDim2.new(1, -16, 0, contentHeight)}):Play()
-			TweenService:Create(slot, tweenInfo, {Size = UDim2.new(1, -12, 0, 42 + contentHeight + 8)}):Play()
-		end
-	end
+        -- Check if any keybinds remain
+        local hasAny = false
+        for _, _ in pairs(keybindSlotFrames) do hasAny = true; break end
+        noKbLabel.Visible = not hasAny
+    end)
 
-	-- Gear button toggle
-	gearBtn.MouseButton1Click:Connect(function()
-		keybindSettingsOpen[slotId] = not keybindSettingsOpen[slotId]
-		createRipple(gearBtn)
+    -- Hover effects
+    gearBtn.MouseEnter:Connect(function()
+        if not keybindSettingsOpen[slotId] then
+            TweenService:Create(gearBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(50, 42, 88)}):Play()
+        end
+    end)
+    gearBtn.MouseLeave:Connect(function()
+        if not keybindSettingsOpen[slotId] then
+            TweenService:Create(gearBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(38, 34, 68)}):Play()
+        end
+    end)
 
-		if keybindSettingsOpen[slotId] then
-			settingsPanel.Visible = true
-			refreshWaypointButtons()
+    keyBtn.MouseEnter:Connect(function()
+        if listeningForKey ~= slotId then
+            TweenService:Create(keyBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(44, 38, 72)}):Play()
+        end
+    end)
+    keyBtn.MouseLeave:Connect(function()
+        if listeningForKey ~= slotId then
+            TweenService:Create(keyBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(35, 30, 58)}):Play()
+        end
+    end)
 
-			local rows = math.max(1, math.ceil(math.max(1, #waypoints) / 5))
-			local contentHeight = 36 + rows * 36
+    delKbBtn.MouseEnter:Connect(function()
+        TweenService:Create(delKbBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(95, 30, 30)}):Play()
+        TweenService:Create(delKbStroke, tweenFast, {Transparency = 0}):Play()
+    end)
+    delKbBtn.MouseLeave:Connect(function()
+        TweenService:Create(delKbBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(60, 22, 22)}):Play()
+        TweenService:Create(delKbStroke, tweenFast, {Transparency = 0.5}):Play()
+    end)
 
-			TweenService:Create(settingsPanel, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-				Size = UDim2.new(1, -16, 0, contentHeight)
-			}):Play()
-			TweenService:Create(slot, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-				Size = UDim2.new(1, -12, 0, 42 + contentHeight + 8)
-			}):Play()
-			TweenService:Create(gearBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(65, 50, 110)}):Play()
-			TweenService:Create(gearStroke, tweenFast, {Color = Color3.fromRGB(120, 90, 200)}):Play()
+    slot.MouseEnter:Connect(function()
+        TweenService:Create(slotStroke, tweenFast, {Color = Color3.fromRGB(72, 58, 130), Transparency = 0}):Play()
+        TweenService:Create(slot, tweenFast, {BackgroundColor3 = Color3.fromRGB(25, 22, 44)}):Play()
+    end)
+    slot.MouseLeave:Connect(function()
+        TweenService:Create(slotStroke, tweenFast, {Color = Color3.fromRGB(44, 38, 72), Transparency = 0.4}):Play()
+        TweenService:Create(slot, tweenFast, {BackgroundColor3 = Color3.fromRGB(20, 18, 38)}):Play()
+    end)
 
-			-- Rotate gear icon
-			TweenService:Create(gearBtn, TweenInfo.new(0.3), {Rotation = 90}):Play()
-		else
-			TweenService:Create(settingsPanel, TweenInfo.new(0.25, Enum.EasingStyle.Quint), {
-				Size = UDim2.new(1, -16, 0, 0)
-			}):Play()
-			TweenService:Create(slot, TweenInfo.new(0.25, Enum.EasingStyle.Quint), {
-				Size = UDim2.new(1, -12, 0, 42)
-			}):Play()
-			TweenService:Create(gearBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(45, 40, 75)}):Play()
-			TweenService:Create(gearStroke, tweenFast, {Color = Color3.fromRGB(70, 60, 120)}):Play()
-			TweenService:Create(gearBtn, TweenInfo.new(0.3), {Rotation = 0}):Play()
+    -- Entrance animation
+    TweenService:Create(slot, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+        Size = UDim2.new(1, -10, 0, 38), BackgroundTransparency = 0
+    }):Play()
 
-			task.delay(0.25, function() settingsPanel.Visible = false end)
-		end
-	end)
-
-	-- Key button - listen for key press
-	keyBtn.MouseButton1Click:Connect(function()
-		createRipple(keyBtn)
-
-		if listeningForKey == slotId then
-			-- Cancel listening
-			listeningForKey = nil
-			keyLabel.Text = keybinds[slotId].key and keybinds[slotId].key.Name or "?"
-			keyLabel.TextColor3 = keybinds[slotId].key and Color3.fromRGB(200, 180, 255) or Color3.fromRGB(100, 90, 130)
-			TweenService:Create(keyBtnStroke, tweenFast, {Color = Color3.fromRGB(70, 60, 120)}):Play()
-			TweenService:Create(keyBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(40, 35, 65)}):Play()
-			return
-		end
-
-		listeningForKey = slotId
-		keyLabel.Text = "..."
-		keyLabel.TextColor3 = Color3.fromRGB(255, 200, 100)
-		TweenService:Create(keyBtnStroke, tweenFast, {Color = Color3.fromRGB(200, 160, 60)}):Play()
-		TweenService:Create(keyBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(60, 50, 30)}):Play()
-
-		-- Pulsing animation while listening
-		task.spawn(function()
-			while listeningForKey == slotId do
-				TweenService:Create(keyLabel, TweenInfo.new(0.4), {TextTransparency = 0.4}):Play()
-				task.wait(0.4)
-				if listeningForKey ~= slotId then break end
-				TweenService:Create(keyLabel, TweenInfo.new(0.4), {TextTransparency = 0}):Play()
-				task.wait(0.4)
-			end
-			keyLabel.TextTransparency = 0
-		end)
-	end)
-
-	-- Hover effects
-	gearBtn.MouseEnter:Connect(function()
-		if not keybindSettingsOpen[slotId] then
-			TweenService:Create(gearBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(58, 48, 95)}):Play()
-			TweenService:Create(gearStroke, tweenFast, {Transparency = 0}):Play()
-		end
-	end)
-	gearBtn.MouseLeave:Connect(function()
-		if not keybindSettingsOpen[slotId] then
-			TweenService:Create(gearBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(45, 40, 75)}):Play()
-			TweenService:Create(gearStroke, tweenFast, {Transparency = 0.4}):Play()
-		end
-	end)
-
-	keyBtn.MouseEnter:Connect(function()
-		if listeningForKey ~= slotId then
-			TweenService:Create(keyBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(50, 45, 80)}):Play()
-			TweenService:Create(keyBtnStroke, tweenFast, {Transparency = 0}):Play()
-		end
-	end)
-	keyBtn.MouseLeave:Connect(function()
-		if listeningForKey ~= slotId then
-			TweenService:Create(keyBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(40, 35, 65)}):Play()
-			TweenService:Create(keyBtnStroke, tweenFast, {Transparency = 0.3}):Play()
-		end
-	end)
-
-	slot.MouseEnter:Connect(function()
-		TweenService:Create(slotStroke, tweenFast, {Color = Color3.fromRGB(80, 65, 140), Transparency = 0}):Play()
-		TweenService:Create(slot, tweenFast, {BackgroundColor3 = Color3.fromRGB(30, 28, 48)}):Play()
-	end)
-	slot.MouseLeave:Connect(function()
-		TweenService:Create(slotStroke, tweenFast, {Color = Color3.fromRGB(50, 45, 80), Transparency = 0.4}):Play()
-		TweenService:Create(slot, tweenFast, {BackgroundColor3 = Color3.fromRGB(26, 24, 42)}):Play()
-	end)
-
-	-- Entrance animation
-	TweenService:Create(slot, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-		Size = UDim2.new(1, -12, 0, 42), BackgroundTransparency = 0
-	}):Play()
-
-	keybindSlotFrames[slotId] = slot
-	return slot
+    keybindSlotFrames[slotId] = slot
+    noKbLabel.Visible = false
+    return slot
 end
 
--- Create 5 keybind slots
-for i = 1, 5 do
-	task.delay(i * 0.08, function()
-		createKeybindSlot(i)
-	end)
-end
+-- Add Keybind button
+addKbBtn.MouseButton1Click:Connect(function()
+    createRipple(addKbBtn)
+    keybindCounter += 1
+    createKeybindSlot(keybindCounter)
+
+    TweenService:Create(addKbBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(25, 80, 30)}):Play()
+    TweenService:Create(addKbStroke, tweenFast, {Color = Color3.fromRGB(55, 180, 65)}):Play()
+    addKbLabel.Text = "✅  Added!"; task.wait(0.5)
+    TweenService:Create(addKbBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(30, 50, 35)}):Play()
+    TweenService:Create(addKbStroke, tweenFast, {Color = Color3.fromRGB(50, 100, 55)}):Play()
+    addKbLabel.Text = "➕  Add Keybind"
+end)
+
+addKbBtn.MouseEnter:Connect(function()
+    TweenService:Create(addKbStroke, tweenFast, {Color = Color3.fromRGB(70, 150, 80), Transparency = 0}):Play()
+    TweenService:Create(addKbBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(35, 62, 40)}):Play()
+end)
+addKbBtn.MouseLeave:Connect(function()
+    TweenService:Create(addKbStroke, tweenFast, {Color = Color3.fromRGB(50, 100, 55), Transparency = 0.3}):Play()
+    TweenService:Create(addKbBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(30, 50, 35)}):Play()
+end)
 
 -- ============================================
 -- KEYBIND INPUT HANDLER
 -- ============================================
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
-	if gameProcessed then return end
+    if gameProcessed then return end
+    if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
 
-	if input.UserInputType == Enum.UserInputType.Keyboard then
-		-- Check if listening for a key bind
-		if listeningForKey then
-			local slotId = listeningForKey
-			local keyCode = input.KeyCode
+    -- Listening mode
+    if listeningForKey then
+        local sid = listeningForKey
+        local kc = input.KeyCode
 
-			-- Don't allow certain keys
-			if keyCode == Enum.KeyCode.Escape then
-				-- Cancel binding
-				listeningForKey = nil
-				updateKeybindSlotDisplay(slotId)
-				local keyBtn = keybindSlotFrames[slotId]:FindFirstChild("KeyBtn")
-				if keyBtn then
-					local keyBtnStroke = keyBtn:FindFirstChildWhichIsA("UIStroke")
-					TweenService:Create(keyBtnStroke, tweenFast, {Color = Color3.fromRGB(70, 60, 120)}):Play()
-					TweenService:Create(keyBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(40, 35, 65)}):Play()
-				end
-				return
-			end
+        if kc == Enum.KeyCode.Escape then
+            listeningForKey = nil
+            updateKeybindDisplay(sid)
+            local kb2 = keybindSlotFrames[sid]
+            if kb2 then
+                local kbtn = kb2:FindFirstChild("KeyBtn")
+                if kbtn then
+                    local ks = kbtn:FindFirstChildWhichIsA("UIStroke")
+                    if ks then TweenService:Create(ks, tweenFast, {Color = Color3.fromRGB(62, 52, 110)}):Play() end
+                    TweenService:Create(kbtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(35, 30, 58)}):Play()
+                end
+            end
+            return
+        end
 
-			-- Check for duplicate keys
-			for id, kb in pairs(keybinds) do
-				if id ~= slotId and kb.key == keyCode then
-					-- Flash error
-					local s = keybindSlotFrames[slotId]
-					TweenService:Create(s, tweenFast, {BackgroundColor3 = Color3.fromRGB(60, 25, 25)}):Play()
-					task.wait(0.3)
-					TweenService:Create(s, tweenFast, {BackgroundColor3 = Color3.fromRGB(26, 24, 42)}):Play()
-					return
-				end
-			end
+        -- Check duplicates
+        for id, kb in pairs(keybinds) do
+            if id ~= sid and kb.key == kc then
+                local s = keybindSlotFrames[sid]
+                if s then
+                    TweenService:Create(s, tweenFast, {BackgroundColor3 = Color3.fromRGB(55, 20, 20)}):Play()
+                    task.wait(0.3)
+                    TweenService:Create(s, tweenFast, {BackgroundColor3 = Color3.fromRGB(20, 18, 38)}):Play()
+                end
+                return
+            end
+        end
 
-			keybinds[slotId].key = keyCode
-			listeningForKey = nil
+        if keybinds[sid] then
+            keybinds[sid].key = kc
+        end
+        listeningForKey = nil
+        updateKeybindDisplay(sid)
 
-			updateKeybindSlotDisplay(slotId)
+        local s = keybindSlotFrames[sid]
+        if s then
+            local kbtn = s:FindFirstChild("KeyBtn")
+            if kbtn then
+                local ks = kbtn:FindFirstChildWhichIsA("UIStroke")
+                if ks then TweenService:Create(ks, tweenFast, {Color = Color3.fromRGB(62, 52, 110)}):Play() end
+                TweenService:Create(kbtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(28, 62, 28)}):Play()
+                task.wait(0.2)
+                TweenService:Create(kbtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(35, 30, 58)}):Play()
+            end
+            TweenService:Create(s, tweenFast, {BackgroundColor3 = Color3.fromRGB(25, 40, 25)}):Play()
+            task.wait(0.2)
+            TweenService:Create(s, tweenFast, {BackgroundColor3 = Color3.fromRGB(20, 18, 38)}):Play()
+        end
+        return
+    end
 
-			local keyBtn = keybindSlotFrames[slotId]:FindFirstChild("KeyBtn")
-			if keyBtn then
-				local keyBtnStroke = keyBtn:FindFirstChildWhichIsA("UIStroke")
-				TweenService:Create(keyBtnStroke, tweenFast, {Color = Color3.fromRGB(70, 60, 120)}):Play()
-				TweenService:Create(keyBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(40, 35, 65)}):Play()
-
-				-- Success flash
-				TweenService:Create(keyBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(30, 70, 30)}):Play()
-				task.wait(0.2)
-				TweenService:Create(keyBtn, tweenFast, {BackgroundColor3 = Color3.fromRGB(40, 35, 65)}):Play()
-			end
-
-			-- Bounce slot
-			local s = keybindSlotFrames[slotId]
-			TweenService:Create(s, tweenFast, {BackgroundColor3 = Color3.fromRGB(35, 45, 35)}):Play()
-			task.wait(0.2)
-			TweenService:Create(s, tweenFast, {BackgroundColor3 = Color3.fromRGB(26, 24, 42)}):Play()
-			return
-		end
-
-		-- Check if any keybind matches the pressed key
-		for slotId, kb in pairs(keybinds) do
-			if kb.key == input.KeyCode and kb.waypointIndex then
-				local pos = getWaypointPosition(kb.waypointIndex)
-				if pos then
-					character = player.Character
-					if character and character:FindFirstChild("HumanoidRootPart") then
-						character.HumanoidRootPart.CFrame = CFrame.new(pos)
-
-						-- Visual feedback on the slot
-						local s = keybindSlotFrames[slotId]
-						if s then
-							TweenService:Create(s, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(40, 120, 40)}):Play()
-							local sStroke = s:FindFirstChildWhichIsA("UIStroke")
-							if sStroke then
-								TweenService:Create(sStroke, TweenInfo.new(0.1), {Color = Color3.fromRGB(80, 200, 80)}):Play()
-							end
-
-							task.wait(0.3)
-							TweenService:Create(s, tweenFast, {BackgroundColor3 = Color3.fromRGB(26, 24, 42)}):Play()
-							if sStroke then
-								TweenService:Create(sStroke, tweenFast, {Color = Color3.fromRGB(50, 45, 80)}):Play()
-							end
-						end
-					end
-				end
-			end
-		end
-	end
+    -- Execute keybinds
+    for sid, kb in pairs(keybinds) do
+        if kb and kb.key == input.KeyCode and kb.waypointIndex then
+            local pos2 = getWpPos(kb.waypointIndex)
+            if pos2 then
+                character = player.Character
+                if character and character:FindFirstChild("HumanoidRootPart") then
+                    character.HumanoidRootPart.CFrame = CFrame.new(pos2)
+                    local s = keybindSlotFrames[sid]
+                    if s and s.Parent then
+                        TweenService:Create(s, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(35, 110, 35)}):Play()
+                        local ss = s:FindFirstChildWhichIsA("UIStroke")
+                        if ss then TweenService:Create(ss, TweenInfo.new(0.1), {Color = Color3.fromRGB(70, 195, 70)}):Play() end
+                        task.wait(0.3)
+                        TweenService:Create(s, tweenFast, {BackgroundColor3 = Color3.fromRGB(20, 18, 38)}):Play()
+                        if ss then TweenService:Create(ss, tweenFast, {Color = Color3.fromRGB(44, 38, 72)}):Play() end
+                    end
+                end
+            end
+        end
+    end
 end)
 
 -- ============================================
@@ -1910,67 +2028,56 @@ end)
 local lastSize = outerGlow.Size
 
 minimizeBtn.MouseButton1Click:Connect(function()
-	minimized = not minimized
-	createRipple(minimizeBtn)
-	if minimized then
-		lastSize = outerGlow.Size
-		TweenService:Create(outerGlow, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
-			Size = UDim2.new(0, lastSize.X.Offset, 0, 42)
-		}):Play()
-		TweenService:Create(glowLayer1, TweenInfo.new(0.3), {ImageTransparency = 0.95}):Play()
-		TweenService:Create(glowLayer2, TweenInfo.new(0.3), {ImageTransparency = 0.9}):Play()
-		TweenService:Create(glowLayer3, TweenInfo.new(0.3), {ImageTransparency = 1}):Play()
-		minimizeBtn.Text = "+"
-		resizeHandle.Visible = false
-	else
-		TweenService:Create(outerGlow, TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-			Size = lastSize
-		}):Play()
-		TweenService:Create(glowLayer1, TweenInfo.new(0.5), {ImageTransparency = 0.7}):Play()
-		TweenService:Create(glowLayer2, TweenInfo.new(0.5), {ImageTransparency = 0.55}):Play()
-		TweenService:Create(glowLayer3, TweenInfo.new(0.5), {ImageTransparency = 0.85}):Play()
-		minimizeBtn.Text = "−"
-		task.wait(0.45)
-		resizeHandle.Visible = true
-	end
+    minimized = not minimized; createRipple(minimizeBtn)
+    if minimized then
+        lastSize = outerGlow.Size
+        TweenService:Create(outerGlow, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
+            Size = UDim2.new(0, lastSize.X.Offset, 0, 42)
+        }):Play()
+        TweenService:Create(glowLayer1, TweenInfo.new(0.3), {ImageTransparency = 0.95}):Play()
+        TweenService:Create(glowLayer2, TweenInfo.new(0.3), {ImageTransparency = 0.92}):Play()
+        TweenService:Create(glowLayer3, TweenInfo.new(0.3), {ImageTransparency = 1}):Play()
+        minimizeBtn.Text = "+"; resizeHandle.Visible = false
+    else
+        TweenService:Create(outerGlow, TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size = lastSize}):Play()
+        TweenService:Create(glowLayer1, TweenInfo.new(0.5), {ImageTransparency = 0.7}):Play()
+        TweenService:Create(glowLayer2, TweenInfo.new(0.5), {ImageTransparency = 0.55}):Play()
+        TweenService:Create(glowLayer3, TweenInfo.new(0.5), {ImageTransparency = 0.85}):Play()
+        minimizeBtn.Text = "−"; task.wait(0.45); resizeHandle.Visible = true
+    end
 end)
 
 minimizeBtn.MouseEnter:Connect(function()
-	TweenService:Create(minimizeBtn, tweenFast, {BackgroundTransparency = 0.2, BackgroundColor3 = Color3.fromRGB(230, 195, 55)}):Play()
-	TweenService:Create(minimizeBtnStroke, tweenFast, {Transparency = 0.2}):Play()
+    TweenService:Create(minimizeBtn, tweenFast, {BackgroundTransparency = 0.2, BackgroundColor3 = Color3.fromRGB(225, 190, 50)}):Play()
 end)
 minimizeBtn.MouseLeave:Connect(function()
-	TweenService:Create(minimizeBtn, tweenFast, {BackgroundTransparency = 0.5, BackgroundColor3 = Color3.fromRGB(200, 170, 50)}):Play()
-	TweenService:Create(minimizeBtnStroke, tweenFast, {Transparency = 0.6}):Play()
+    TweenService:Create(minimizeBtn, tweenFast, {BackgroundTransparency = 0.5, BackgroundColor3 = Color3.fromRGB(200, 170, 50)}):Play()
 end)
 
 closeBtn.MouseButton1Click:Connect(function()
-	enabled = false
-	if outlineConnection then outlineConnection:Disconnect() end
-	if particleConnection then particleConnection:Disconnect() end
-	if dotPulseConnection then dotPulseConnection:Disconnect() end
-	TweenService:Create(mainStroke, TweenInfo.new(0.1), {Color = Color3.fromRGB(255, 200, 255), Thickness = 4}):Play()
-	task.wait(0.1)
-	TweenService:Create(outerGlow, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
-		Size = UDim2.new(0, 0, 0, 0),
-		Position = UDim2.new(outerGlow.Position.X.Scale, outerGlow.Position.X.Offset + outerGlow.AbsoluteSize.X/2,
-			outerGlow.Position.Y.Scale, outerGlow.Position.Y.Offset + outerGlow.AbsoluteSize.Y/2)
-	}):Play()
-	TweenService:Create(mainFrame, TweenInfo.new(0.3), {BackgroundTransparency = 1}):Play()
-	TweenService:Create(glowLayer1, TweenInfo.new(0.2), {ImageTransparency = 1}):Play()
-	TweenService:Create(glowLayer2, TweenInfo.new(0.2), {ImageTransparency = 1}):Play()
-	TweenService:Create(glowLayer3, TweenInfo.new(0.2), {ImageTransparency = 1}):Play()
-	task.wait(0.4)
-	screenGui:Destroy()
+    enabled = false
+    if outlineConnection then outlineConnection:Disconnect() end
+    if cosmicConnection then cosmicConnection:Disconnect() end
+    if dotPulseConnection then dotPulseConnection:Disconnect() end
+    TweenService:Create(mainStroke, TweenInfo.new(0.1), {Color = Color3.fromRGB(255, 200, 255), Thickness = 4}):Play()
+    task.wait(0.1)
+    TweenService:Create(outerGlow, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
+        Size = UDim2.new(0, 0, 0, 0),
+        Position = UDim2.new(outerGlow.Position.X.Scale, outerGlow.Position.X.Offset + outerGlow.AbsoluteSize.X/2,
+            outerGlow.Position.Y.Scale, outerGlow.Position.Y.Offset + outerGlow.AbsoluteSize.Y/2)
+    }):Play()
+    TweenService:Create(mainFrame, TweenInfo.new(0.3), {BackgroundTransparency = 1}):Play()
+    for _, gl in ipairs({glowLayer1, glowLayer2, glowLayer3, shadow}) do
+        TweenService:Create(gl, TweenInfo.new(0.2), {ImageTransparency = 1}):Play()
+    end
+    task.wait(0.4); screenGui:Destroy()
 end)
 
 closeBtn.MouseEnter:Connect(function()
-	TweenService:Create(closeBtn, tweenFast, {BackgroundTransparency = 0.2, BackgroundColor3 = Color3.fromRGB(225, 65, 65)}):Play()
-	TweenService:Create(closeBtnStroke, tweenFast, {Transparency = 0.2}):Play()
+    TweenService:Create(closeBtn, tweenFast, {BackgroundTransparency = 0.2, BackgroundColor3 = Color3.fromRGB(220, 60, 60)}):Play()
 end)
 closeBtn.MouseLeave:Connect(function()
-	TweenService:Create(closeBtn, tweenFast, {BackgroundTransparency = 0.5, BackgroundColor3 = Color3.fromRGB(200, 55, 55)}):Play()
-	TweenService:Create(closeBtnStroke, tweenFast, {Transparency = 0.6}):Play()
+    TweenService:Create(closeBtn, tweenFast, {BackgroundTransparency = 0.5, BackgroundColor3 = Color3.fromRGB(200, 55, 55)}):Play()
 end)
 
 -- ============================================
@@ -1982,21 +2089,39 @@ local targetPos = outerGlow.Position
 outerGlow.Size = UDim2.new(0, 0, 0, 0)
 outerGlow.Position = UDim2.new(0.5, 0, 0.5, 0)
 mainFrame.BackgroundTransparency = 1
-glowLayer1.ImageTransparency = 1
-glowLayer2.ImageTransparency = 1
-glowLayer3.ImageTransparency = 1
-shadow.ImageTransparency = 1
+for _, gl in ipairs({glowLayer1, glowLayer2, glowLayer3, shadow}) do gl.ImageTransparency = 1 end
 topBarLine.Size = UDim2.new(0, 0, 0, 2)
 topBarLine.Position = UDim2.new(0.5, 0, 1, -2)
+
+-- Hide cosmic initially
+for _, sd2 in ipairs(stars) do if sd2.frame then sd2.frame.BackgroundTransparency = 1 end end
+nebula1.BackgroundTransparency = 1; nebula2.BackgroundTransparency = 1
+nebula3.BackgroundTransparency = 1; nebula4.BackgroundTransparency = 1; nebula5.BackgroundTransparency = 1
 
 task.wait(0.15)
 
 TweenService:Create(outerGlow, TweenInfo.new(0.6, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-	Size = targetSize, Position = targetPos
+    Size = targetSize, Position = targetPos
 }):Play()
 TweenService:Create(mainFrame, TweenInfo.new(0.4), {BackgroundTransparency = 0}):Play()
 
 task.wait(0.25)
+
+-- Fade in cosmic background
+for _, sd2 in ipairs(stars) do
+    if sd2.frame and sd2.frame.Parent then
+        TweenService:Create(sd2.frame, TweenInfo.new(0.5 + math.random() * 0.5), {
+            BackgroundTransparency = sd2.baseTransp
+        }):Play()
+    end
+end
+
+TweenService:Create(nebula1, TweenInfo.new(1.5), {BackgroundTransparency = 0.88}):Play()
+TweenService:Create(nebula2, TweenInfo.new(1.8), {BackgroundTransparency = 0.9}):Play()
+TweenService:Create(nebula3, TweenInfo.new(2), {BackgroundTransparency = 0.92}):Play()
+TweenService:Create(nebula4, TweenInfo.new(1.6), {BackgroundTransparency = 0.91}):Play()
+TweenService:Create(nebula5, TweenInfo.new(1.4), {BackgroundTransparency = 0.93}):Play()
+
 TweenService:Create(glowLayer3, TweenInfo.new(0.5), {ImageTransparency = 0.85}):Play()
 task.wait(0.1)
 TweenService:Create(glowLayer1, TweenInfo.new(0.5), {ImageTransparency = 0.7}):Play()
@@ -2006,15 +2131,12 @@ TweenService:Create(shadow, TweenInfo.new(0.5), {ImageTransparency = 0.4}):Play(
 
 task.wait(0.15)
 TweenService:Create(topBarLine, TweenInfo.new(0.5, Enum.EasingStyle.Quint), {
-	Size = UDim2.new(0.9, 0, 0, 2), Position = UDim2.new(0.05, 0, 1, -2)
+    Size = UDim2.new(0.9, 0, 0, 2), Position = UDim2.new(0.05, 0, 1, -2)
 }):Play()
 
 task.wait(0.2)
-local fullTitle = "Utility Hub"
-for i = 1, #fullTitle do
-	titleText.Text = string.sub(fullTitle, 1, i)
-	task.wait(0.04)
-end
+local ft = "Utility Hub"
+for i = 1, #ft do titleText.Text = ft:sub(1, i); task.wait(0.04) end
 
 TweenService:Create(titleIcon, TweenInfo.new(0.15), {TextSize = 24, Rotation = 15}):Play()
 task.wait(0.15)
@@ -2025,26 +2147,24 @@ TweenService:Create(versionTag, TweenInfo.new(0.3), {BackgroundTransparency = 0,
 TweenService:Create(versionStroke, TweenInfo.new(0.3), {Transparency = 0.4}):Play()
 
 task.wait(0.1)
-local origTabPos = tabBar.Position
-tabBar.Position = UDim2.new(0, 10, 0, 70)
+local otp = tabBar.Position
+tabBar.Position = UDim2.new(0, 10, 0, 68)
 tabBar.BackgroundTransparency = 0.5
 TweenService:Create(tabBar, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-	Position = origTabPos, BackgroundTransparency = 0
+    Position = otp, BackgroundTransparency = 0
 }):Play()
 
 task.wait(0.2)
-bypassContent.Position = UDim2.new(0, 10, 0, 110)
+bypassContent.Position = UDim2.new(0, 10, 0, 108)
 TweenService:Create(bypassContent, TweenInfo.new(0.3, Enum.EasingStyle.Quint), {
-	Position = UDim2.new(0, 10, 0, 95)
+    Position = UDim2.new(0, 10, 0, 95)
 }):Play()
 
-task.wait(0.1)
-for _ = 1, 6 do spawnParticle(); task.wait(0.05) end
+-- Initial shooting star
+task.wait(0.5)
+createShootingStar()
 
 -- ============================================
 -- RESPAWN
 -- ============================================
-player.CharacterAdded:Connect(function(nc)
-	character = nc
-	nc:WaitForChild("HumanoidRootPart")
-end)
+player.CharacterAdded:Connect(function(nc) character = nc; nc:WaitForChild("HumanoidRootPart") end)
