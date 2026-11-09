@@ -13658,6 +13658,39 @@ local function setUpWornTailPhysics(character, accessory, Data)
 	return PlayerData[Data].CurrentPartList.physicsTails[accessory] ~= nil, "setUpWeld did not register"
 end
 
+-- FIX: universal tail scanner. Gives EVERY tail on the character the same physics
+-- as the shark tail, no matter how it got there (bundle, bundle tail list,
+-- catalog, or the avatar's own accessories).
+local function tryTailPhysics(character, acc, Data, source)
+	if not acc:IsA("Accessory") or not acc.Parent then return end
+	local list = PlayerData[Data] and PlayerData[Data].CurrentPartList.physicsTails
+	if not list or list[acc] then return end -- already moving
+	if not isTailAccessory(acc) then
+		tailDebugLog(acc, false, source)
+		return
+	end
+	local ok, res, why = pcall(setUpWornTailPhysics, character, acc, Data)
+	if not ok then
+		tailDebugLog(acc, true, source .. ", ERROR: " .. tostring(res))
+	else
+		tailDebugLog(acc, true, res and (source .. ", physics ON") or (source .. ", physics FAILED: " .. tostring(why)))
+	end
+end
+
+local function scanTailsAndWatch(character, Data)
+	for _, acc in ipairs(character:GetChildren()) do
+		tryTailPhysics(character, acc, Data, "scan")
+	end
+	-- Accessories that arrive later (slow avatar load, catalog items, re-equips).
+	local conn = character.ChildAdded:Connect(function(acc)
+		if not acc:IsA("Accessory") then return end
+		task.delay(0.2, function() -- let the Handle/weld finish building
+			tryTailPhysics(character, acc, Data, "added later")
+		end)
+	end)
+	PlayerData[Data].ExecutionMaid:Give(conn)
+end
+
 local function setUpTailAccessory(character: Model, accessory: Accessory, Data)
     -- Early exit if the accessory or character is missing/unparented
     if not accessory or IsInstanceDestroyed(accessory) or not character or not character.Parent then return end
@@ -14969,7 +15002,7 @@ end
 				-- Remove every other joint on the Handle and block new ones.
 				Weld.Name = "RCTailWeld"
 				local function isCompetingJoint(j)
-					return j ~= Weld and (j:IsA("JointInstance") or j:IsA("WeldConstraint") or j:IsA("RigidConstraint"))
+					return j ~= Weld and j.Name ~= "RCTailWeld" and (j:IsA("JointInstance") or j:IsA("WeldConstraint") or j:IsA("RigidConstraint"))
 				end
 				for _, j in ipairs(CHandle:GetChildren()) do
 					if isCompetingJoint(j) then j:Destroy() end
@@ -16050,24 +16083,9 @@ end
 			Function.CatalogLoader(Character, CharacterAttachment, Data, OldCharacter, RequestID)
 			if RequestID and RequestID ~= DataDetail.LastRequestID then return end
 
-			-- FIX: also give physics to tails the avatar is already wearing (not just
-			-- ones RoClothes adds). Uses their existing AccessoryWeld.
-			for _, acc in ipairs(Character:GetChildren()) do
-				if acc:IsA("Accessory") and not acc:HasTag("RoClothes")
-					and not DataDetail.CurrentPartList.physicsTails[acc] then
-					local accIsTail = isTailAccessory(acc)
-					if accIsTail then
-						local ok, res, why = pcall(setUpWornTailPhysics, Character, acc, Data)
-						if not ok then
-							tailDebugLog(acc, true, "worn, ERROR: " .. tostring(res))
-						else
-							tailDebugLog(acc, true, res and "worn, physics ON" or ("worn, physics FAILED: " .. tostring(why)))
-						end
-					else
-						tailDebugLog(acc, false, "worn")
-					end
-				end
-			end
+			-- FIX: give every tail on the character physics (all load paths), and keep
+			-- watching for tails added later.
+			scanTailsAndWatch(Character, Data)
 			if DataDetail.SkinTone ~= nil then
 				Function.BodyColorForceSet(Character, DataDetail.SkinTone)
 			end
