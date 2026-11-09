@@ -13406,20 +13406,47 @@ function RoClothes(Player)
 		includedAccessoryNamesValidationSetNeedsUpdating = false
 	end
 
+	-- FIX: broadened tail detection so physics works on ANY tail, not only
+	-- Back/Waist accessories with "tail" in the name.
+	-- Edit these lists to customise which accessories count as tails.
+	local tailNameKeywords = {"tail", "shippo"} -- name contains any of these -> tail
+	local tailNameBlacklist = {"ponytail", "pony tail", "pigtail", "pig tail", "tailcoat", "tail coat", "cocktail", "detail", "retail"} -- never tails (mostly hair)
+	local tailAttachmentNames = { -- Handle attached here -> treated as tail even if the name doesn't say "tail"
+		WaistBackAttachment = true,
+	}
+
 	local function isTailAccessory(accessory:Accessory):boolean
-		local accessoryType = accessory.AccessoryType
+		if not accessory or not accessory:IsA("Accessory") then return false end
 		local accessoryName = accessory.Name
-		if accessoryType == Enum.AccessoryType.Back or accessoryType == Enum.AccessoryType.Waist then
-			if includedAccessoryNamesValidationSetNeedsUpdating then updateIncludedAccessoryNamesValidationSet() end
-			if string.find(string.lower(accessoryName), "tail", 1, true) then
-				if includedAccessoryNamesValidationSet[accessoryName] == nil
-					or includedAccessoryNamesValidationSet[accessoryName] == true then
+		local lowerName = string.lower(accessoryName)
+
+		-- Manual include/exclude lists always win.
+		if includedAccessoryNamesValidationSetNeedsUpdating then updateIncludedAccessoryNamesValidationSet() end
+		local manual = includedAccessoryNamesValidationSet[accessoryName]
+		if manual ~= nil then return manual end
+
+		-- Tails loaded from a bundle's tail description are always tails.
+		if string.find(accessoryName, "RCTailCertified", 1, true) then return true end
+
+		for _, word in ipairs(tailNameBlacklist) do
+			if string.find(lowerName, word, 1, true) then return false end
+		end
+
+		-- Name match, any accessory type.
+		for _, word in ipairs(tailNameKeywords) do
+			if string.find(lowerName, word, 1, true) then return true end
+		end
+
+		-- Attachment match (most tails attach to the back of the waist).
+		local handle = accessory:FindFirstChild("Handle")
+		if handle then
+			for _, att in ipairs(handle:GetChildren()) do
+				if att:IsA("Attachment") and tailAttachmentNames[att.Name] then
 					return true
 				end
-			elseif includedAccessoryNamesValidationSet[accessoryName] then
-				return true
 			end
 		end
+
 		return false
 	end
 
@@ -13478,6 +13505,11 @@ function RoClothes(Player)
 			pivotOffset = cframeOrAttachmentOrNilParameterToCFrame(customPivotOffset)
 		else
 			pivotOffset = getTailPivotOffsetFromRoot(root)
+		end
+		-- FIX: if the root has no waist attachment, pivot at the joint itself so tails
+		-- attached anywhere (back, torso, legs) still get physics.
+		if not pivotOffset then
+			pivotOffset = flipAccessoryWeldParts and weld.C1 or weld.C0
 		end
 		if not pivotOffset then warn("Could not find attachment on part \""..root.Name.."\" for the character \""..character.Name.."\". Make sure the character has finished loading and you've set Part0.") return end
 
@@ -13553,6 +13585,77 @@ local function IsInstanceDestroyed(inst: Instance?): boolean
 	return not pcall(function()
 		inst.Parent = nil
 	end)
+end
+
+-- FIX: debug output for tail detection. Set to false once everything works.
+local TailDebug = true
+local function tailDebugLog(accessory, isTail, note)
+	if not TailDebug then return end
+	local handle = accessory:FindFirstChild("Handle") or accessory:FindFirstChildWhichIsA("BasePart")
+	local attNames = {}
+	if handle then
+		for _, a in ipairs(handle:GetChildren()) do
+			if a:IsA("Attachment") then table.insert(attNames, a.Name) end
+		end
+	end
+	print(string.format("[RoClothes Tail] %s | type=%s | handle=%s | attachments=%s | tail=%s%s",
+		accessory.Name, tostring(accessory.AccessoryType), handle and handle.ClassName or "none",
+		table.concat(attNames, ","), tostring(isTail), note and (" | " .. note) or ""))
+end
+
+-- FIX: sets up physics on an accessory that is ALREADY on the character (worn tails).
+-- Replaces whatever joint holds it (Weld / WeldConstraint / RigidConstraint) with a
+-- plain Weld the physics engine can animate, so every tail behaves like the shark tail.
+local function setUpWornTailPhysics(character, accessory, Data)
+	local handle = accessory:FindFirstChild("Handle")
+	if not (handle and handle:IsA("BasePart")) then handle = accessory:FindFirstChildWhichIsA("BasePart") end
+	if not handle then return false, "no handle" end
+	local att = handle:FindFirstChildWhichIsA("Attachment")
+	if not att then return false, "no attachment on handle" end
+
+	-- Find the matching attachment on the body (not inside any accessory).
+	local parentAtt
+	for _, d in ipairs(character:GetDescendants()) do
+		if d:IsA("Attachment") and d.Name == att.Name and d.Parent:IsA("BasePart")
+			and not d:FindFirstAncestorWhichIsA("Accessory") then
+			parentAtt = d
+			break
+		end
+	end
+	if not parentAtt then return false, "no body attachment named " .. att.Name end
+
+	local function isJoint(j)
+		return j:IsA("JointInstance") or j:IsA("WeldConstraint") or j:IsA("RigidConstraint")
+	end
+	for _, j in ipairs(handle:GetChildren()) do
+		if isJoint(j) then j:Destroy() end
+	end
+
+	local weld = Instance.new("Weld")
+	weld.Name = "RCTailWeld"
+	weld.Part0 = handle
+	weld.Part1 = parentAtt.Parent
+	weld.C0 = att.CFrame
+	weld.C1 = parentAtt.CFrame
+	weld.Parent = handle
+
+	local block = handle.ChildAdded:Connect(function(j)
+		if j ~= weld and isJoint(j) then
+			task.defer(function() if j.Parent then j:Destroy() end end)
+		end
+	end)
+	PlayerData[Data].ExecutionMaid:Give(block)
+	PlayerData[Data].ExecutionMaid:Give(function()
+		-- On cleanup, put a normal rigid weld back so the worn tail doesn't fall off.
+		if handle.Parent and weld.Parent then
+			weld.Part0, weld.Part1 = handle, parentAtt.Parent
+			weld.C0, weld.C1 = att.CFrame, parentAtt.CFrame
+		end
+		PlayerData[Data].CurrentPartList.physicsTails[accessory] = nil
+	end)
+
+	setUpWeld(character, weld, handle, nil, Data)
+	return PlayerData[Data].CurrentPartList.physicsTails[accessory] ~= nil, "setUpWeld did not register"
 end
 
 local function setUpTailAccessory(character: Model, accessory: Accessory, Data)
@@ -14718,7 +14821,9 @@ end
 
 	function Function.AccessoryAdd(Character, v, CharacterAttachment, Data)
 		local CAccessory = v:Clone()
-		local CHandle = CAccessory:FindFirstChildOfClass("Part")
+		-- FIX: accept MeshPart handles too (most modern UGC tails use MeshPart, not Part)
+		local CHandle = CAccessory:FindFirstChild("Handle")
+		if not (CHandle and CHandle:IsA("BasePart")) then CHandle = CAccessory:FindFirstChildWhichIsA("BasePart") end
 		if not CHandle then
 			warn("[RoClothes] AccessoryAdd: cloned accessory has no Handle part:", CAccessory.Name)
 			CAccessory:Destroy()
@@ -14741,6 +14846,7 @@ end
 		-- Previously it ran here, before any Weld existed on the clone, so it
 		-- always waited ~1s and warned "Weld not found after timeout".
 		local IsTail = isTailAccessory(CAccessory)
+		if not IsTail then tailDebugLog(CAccessory, false, "added") end
 
 		-- FIX: setUpTailAccessory yields (task.wait loops) while waiting for the
 		-- tail Handle/Weld. If a new execution was triggered during that wait,
@@ -14818,17 +14924,18 @@ end
 
 			local CAttachCF = CAttachment.CFrame
 			local PAttachCF = AttachmentCFrame[CParentAttachment.Name]
-			local Scale = CSpecialMesh.Scale
+			local Scale = CSpecialMesh and CSpecialMesh.Scale or nil -- FIX: MeshPart handles have no SpecialMesh
 
 			if PlayerData[Data].AccessorySizeLock == false then
 				CHandle.Size = Vector3.new(HandleSize.X * XMultiply, HandleSize.Y * YMultiply, HandleSize.Z * ZMultiply)
-				CSpecialMesh.Scale = Vector3.new(Scale.X * XMultiply, Scale.Y * YMultiply, Scale.Z * ZMultiply)CAttachment.CFrame = CFrame.new(CAttachCF.Position.X * XMultiply, CAttachCF.Position.Y * YMultiply, CAttachCF.Position.Z * ZMultiply) * CAttachCF.Rotation
+				if CSpecialMesh then CSpecialMesh.Scale = Vector3.new(Scale.X * XMultiply, Scale.Y * YMultiply, Scale.Z * ZMultiply) end
+				CAttachment.CFrame = CFrame.new(CAttachCF.Position.X * XMultiply, CAttachCF.Position.Y * YMultiply, CAttachCF.Position.Z * ZMultiply) * CAttachCF.Rotation
 				if not PlayerData[Data].CurrentPartList.physicsTails[CAccessory] then
 					CParentAttachment.CFrame = CFrame.new(PAttachCF.Position.X * XMultiply, PAttachCF.Position.Y * YMultiply, PAttachCF.Position.Z * ZMultiply) * PAttachCF.Rotation
 				end
 			else
 				CHandle.Size = HandleSize
-				CSpecialMesh.Scale = Scale
+				if CSpecialMesh then CSpecialMesh.Scale = Scale end
 			end
 
 			CHandle.CanCollide = false
@@ -14880,6 +14987,7 @@ end
 
 				local ok, err = pcall(setUpWeld, Character, Weld, CHandle, nil, Data)
 				if not ok then warn("[RoClothes] Tail physics setup failed for", CAccessory.Name, err) end
+				tailDebugLog(CAccessory, true, PlayerData[Data].CurrentPartList.physicsTails[CAccessory] and "added, physics ON" or "added, physics FAILED")
 			end
 
 			local detectRemoval
@@ -15941,6 +16049,25 @@ end
 
 			Function.CatalogLoader(Character, CharacterAttachment, Data, OldCharacter, RequestID)
 			if RequestID and RequestID ~= DataDetail.LastRequestID then return end
+
+			-- FIX: also give physics to tails the avatar is already wearing (not just
+			-- ones RoClothes adds). Uses their existing AccessoryWeld.
+			for _, acc in ipairs(Character:GetChildren()) do
+				if acc:IsA("Accessory") and not acc:HasTag("RoClothes")
+					and not DataDetail.CurrentPartList.physicsTails[acc] then
+					local accIsTail = isTailAccessory(acc)
+					if accIsTail then
+						local ok, res, why = pcall(setUpWornTailPhysics, Character, acc, Data)
+						if not ok then
+							tailDebugLog(acc, true, "worn, ERROR: " .. tostring(res))
+						else
+							tailDebugLog(acc, true, res and "worn, physics ON" or ("worn, physics FAILED: " .. tostring(why)))
+						end
+					else
+						tailDebugLog(acc, false, "worn")
+					end
+				end
+			end
 			if DataDetail.SkinTone ~= nil then
 				Function.BodyColorForceSet(Character, DataDetail.SkinTone)
 			end
@@ -18780,7 +18907,7 @@ elseif DataDetail.BreastsType == 5 then
 
 					if PlayerData[PlayerName].AccessorySizeLock == false then
 						Part.Size = Vector3.new(Size.X * XMultiply, Size.Y * YMultiply, Size.Z * ZMultiply)
-						SpecialMesh.Scale = Vector3.new(Scale.X * XMultiply, Scale.Y * YMultiply, Scale.Z * ZMultiply)
+						if SpecialMesh and Scale then SpecialMesh.Scale = Vector3.new(Scale.X * XMultiply, Scale.Y * YMultiply, Scale.Z * ZMultiply) end
 						if not PlayerData[PlayerName].CurrentPartList.physicsTails[Part.Parent] then
 							Attach.CFrame = CFrame.new(CF.Position.X * XMultiply, CF.Position.Y * YMultiply, CF.Position.Z * ZMultiply) * CF.Rotation
 							PAttach.CFrame = CFrame.new(PAttachCFrame.Position.X * XMultiply, PAttachCFrame.Position.Y * YMultiply, PAttachCFrame.Position.Z * ZMultiply) * PAttachCFrame.Rotation
