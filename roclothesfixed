@@ -1,4 +1,4 @@
---[[	-- test -- i think
+--[[	
 
 	/ RO-CLOTHES - LERP FORK
 	A Fork of LERP's Ro-Clothes version 
@@ -13427,6 +13427,16 @@ function RoClothes(Player)
 
 		-- Tails loaded from a bundle's tail description are always tails.
 		if string.find(accessoryName, "RCTailCertified", 1, true) then return true end
+
+		-- FIX: AccessoryType "Tail" scan. Compared by name so it never errors on
+		-- Roblox versions where Enum.AccessoryType.Tail doesn't exist.
+		local accType = accessory.AccessoryType
+		if accType and string.lower(accType.Name) == "tail" then return true end
+		-- Also check a "AccessoryType"/"Type" attribute or StringValue some tails carry.
+		local typeAttr = accessory:GetAttribute("AccessoryType") or accessory:GetAttribute("Type")
+		if typeof(typeAttr) == "string" and string.lower(typeAttr) == "tail" then return true end
+		local typeValue = accessory:FindFirstChild("AccessoryType")
+		if typeValue and typeValue:IsA("StringValue") and string.lower(typeValue.Value) == "tail" then return true end
 
 		for _, word in ipairs(tailNameBlacklist) do
 			if string.find(lowerName, word, 1, true) then return false end
